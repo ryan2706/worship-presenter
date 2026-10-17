@@ -31,7 +31,7 @@ Volunteers who are not technical.
 - `display.html`, `css/display.css`, `js/display.js`: the Display (TV) window.
 - `js/channel.js`: the shared channel name, the message list, and the keyboard shortcut rules.
 - `js/fit-text.js`: auto-fits text to any screen, used by the TV and by the slide previews.
-- `js/library.js`: the song library. It is the only file that touches IndexedDB.
+- `js/library.js`: the song library and the saved services. It is the only file that touches IndexedDB.
 - `js/editor.js`: the song editor (add, edit, delete, restore) with its live preview.
 - `js/lyrics.js`: turns the editor's lyrics box into a song's sections and back.
 - `js/sample-songs.js`: the sample hymns that are added the first time the app runs.
@@ -42,6 +42,8 @@ Volunteers who are not technical.
 - `js/bibles.js`: the list of translations. The only place translations are named.
 - `js/passage.js`: turns a passage's verses into slides. No page code.
 - `js/bible-panel.js`: the Bible tab's form (reference, translation, two verses per slide).
+- `js/service.js`: what a service is: making, changing, checking and comparing services. No page code.
+- `js/service-panel.js`: the Service tab (the items, moving and removing them, and saving several services).
 - `data/kjv.json`, `data/web.json`: the Bible text. See `data/README.md` for sources and licences.
 - `tools/make-bible-data.py`: remakes the Bible files from eBible.org. Run by hand; it is not a build step.
 
@@ -70,7 +72,7 @@ The channel name is `worship-presenter`.
 
 ### Songs
 
-- They are stored in the IndexedDB database `worship-presenter`, store `songs`, keyed by `id`. If IndexedDB can't be opened, the built-in samples are shown instead, and saving shows a plain message.
+- They are stored in the IndexedDB database `worship-presenter` (version 2), store `songs`, keyed by `id`. Version 2 added the `services` store; songs from version 1 are kept. If IndexedDB can't be opened, the built-in samples are shown instead, and saving shows a plain message.
 - Songs are only ever saved in this browser, never to the repo or any server.
 - A song is `{id, title, author?, year?, source?, sections: [{name, text}], order?, edited?}`. Each section is one slide. `order` lists section names in the order they're sung, so a chorus can repeat. Without it, the sections are used in the order listed. Songs the user adds get a random id.
 - **Samples** are the songs whose id is in `js/sample-songs.js`. Each time the library loads, they are synced with that file:
@@ -96,19 +98,20 @@ The channel name is `worship-presenter`.
 
 Everything stays on this device unless the volunteer presses a button that saves a file.
 
-- A file is `{app: 'Worship Presenter', kind: 'backup' | 'shared', version: 1, savedAt, songs: [...]}`.
-- **Back up my songs** saves `worship-songs-YYYY-MM-DD.json` (local date) with songs the user added, edited samples, and `{id, deleted: true}` markers for deleted samples. Unedited samples are left out.
-- **Share songs** lets the user tick songs and saves `shared-songs-YYYY-MM-DD.json` with only those songs.
+- A file is `{app: 'Worship Presenter', kind: 'backup' | 'shared', version: 1, savedAt, songs: [...], services: [...]}`. `services` came later and is optional, so older files still work, and older versions of the app ignore it. A file with only services is allowed.
+- **Back up my songs** saves `worship-songs-YYYY-MM-DD.json` (local date) with songs the user added, edited samples, `{id, deleted: true}` markers for deleted samples, and every service. Unedited samples are left out.
+- **Share songs** lets the user tick songs and services and saves `shared-songs-YYYY-MM-DD.json` with only those. Ticking a service ticks its songs too, so another group can run the same meeting.
 - **Restore from backup** opens either kind of file. Problems are explained in plain words (not a backup, damaged, made by a newer version, no songs). Songs that can't be read are skipped and counted.
 - Before anything changes, a summary says "12 new songs, 3 songs you already have." A song is matched by id, then by title. Songs with the same title and words are left alone. For the rest, the user picks **Keep mine**, **Use the backup's** (or **Use the shared one**) or **Keep both**, one by one or for all of them. The default is Keep mine, except when the user's copy is an unedited sample, where it's the file's version. Keep both adds the file's copy titled "(from backup)" or "(shared)".
 - A restore never deletes a song that isn't in the file. A deleted-sample marker only hides a sample that hasn't been edited here.
+- **Services in a file** are matched by id. One you don't have is added. One that's the same as yours is left alone. A different one is added as a copy named "(from backup)" or "(shared)", and yours isn't changed. Songs in a restored service point to the song as it is on this device afterwards: a song matched by title points to yours, and with Keep both it points to the file's copy.
 - The **Keep your songs safe** box (Back up, Restore, Share) sits under the song list. On phones it moves below the slides, so the slides come first.
 - After any change to the songs, the app asks the browser to keep its storage (`navigator.storage.persist`).
 - `localStorage` key `worship-presenter:backup` holds `changedAt` (first change since the last backup) and `dismissedAt`. A reminder shows when changes have gone 7 days without a backup, but only while no slide has been put on the TV in this session (so it never shows during worship). **Not now** hides it for 7 days. Songs that existed before this feature count as a change.
 
 ### Bible
 
-- The left side has two big tabs, **Songs** and **Bible**. A tab that isn't open shows "On the TV" when what's on the TV is in it. Keep your songs safe only shows with the Songs tab.
+- The left side has three big tabs, **Songs**, **Bible** and **Service**. A tab that isn't open shows "On the TV" when what's on the TV is in it. Keep your songs safe only shows with the Songs tab.
 - **Translations:** KJV (1769) and WEB (World English Bible Updated, `engwebu`, with "the LORD"). Both are public domain, from eBible.org. Each Bible file (about 4 MB, 1.2 MB compressed) is only fetched the first time a passage in it is shown.
 - **Adding a translation** means adding one line to `TRANSLATIONS` in `js/bibles.js`. A translation is `{id, short, name, notice, getVerses(ref)}`. `getVerses` returns `[{chapter, verse, text}]` or throws an Error with a plain message. The picker, captions and notice line are built from these fields. ESV will be a `proxyBible` in `js/bible-esv.js` that asks the Cloudflare Worker for verses and shows Crossway's notice.
 - **Only references are saved** (`sessionStorage`), never the words, so a translation with storage limits fits.
@@ -130,13 +133,29 @@ Everything stays on this device unless the volunteer presses a button that saves
   - After a reload, only the passage on the TV and the one being viewed are loaded straight away.
   - Showing a passage moves focus out of the reference box, so the arrow keys and Space move the slides again.
 
+### Service order
+
+- A **service** is the order of songs and passages for one meeting: `{id, name, date: 'YYYY-MM-DD', updatedAt, items}`. An item is a reference only, never the words: `{key, type: 'song', songId, title}` or `{key, type: 'passage', translation, ref}`. `key` tells apart two entries for the same song. `title` is only a label for when the song has been deleted.
+- Services are stored in the IndexedDB store `services`, keyed by `id`. If they can't be saved, they last until the page closes and a plain message says so. Which service is open is kept in `localStorage` `worship-presenter:service`.
+- The third tab, **Service**, shows the open service: its name and date, **Rename** (name and date), **Duplicate**, **Delete** (asks first, in the page), **+ New service**, and **Other services** (newest date first) to open another.
+- **+ Add to service** (next to Edit song) adds the song or passage being viewed, from any tab. If there's no service yet, one called "Meeting" with today's date is made.
+- Each item has **Up**, **Down** and **Remove**. On laptops, items can also be dragged by the ⠿ handle; dropping on an item takes its place. On phones and tablets (coarse pointer) there's no handle. Up and Down stay on laptops too, for keyboard users.
+- A song that's been deleted is shown plainly ("This song isn't in your songs any more. It will be skipped."), can't be opened, and is skipped by Next. If the song comes back, the item works again. The same goes for a passage whose translation isn't available.
+- **Running a service.** Next goes from the last slide of one item to the first slide of the next item in the open service. The item on the TV is marked "On the TV", the item Next will go to is marked "Next", and the bottom bar says "Next in the service: …" or "That's the end of the service."
+  - Opening an item to look at it doesn't change the TV; Next keeps to the order, and clicking a slide shows it straight away.
+  - If the Control page is showing the item on the TV, it follows the TV into the next item.
+  - A song or passage opened from the Songs or Bible tab is played by Next after the current item (the old rule). Then Next carries on with the service from where it was.
+  - Passages in the open service are loaded in the background, so Next doesn't wait.
+- **Changing a service while it runs never changes the TV.** Moving items keeps the item on the TV where it is on the TV; Next follows the new order. Removing the item on the TV leaves the TV as it is (Black screen and Clear text too), and Next goes on to the item that came after it.
+- The Control page's `sessionStorage` also keeps `liveEntry` (the service entry on the TV, or null), `viewEntry` (the one being viewed), and `serviceAt` (the entry Next carries on after, or `'start'` after the first item was removed).
+
 ### Behaviour rules
 
 - **One key press, one action.** Arrows, PageUp/PageDown and B always act, except while typing in a text box (search, title, lyrics), where no key is a shortcut. Space and Enter only mean "next slide" when focus is not on a button, link or form field; otherwise the focused button handles them. After a mouse click on a slide, focus leaves it so that Space goes back to meaning "next".
 - **Black screen and Clear text are different.** Black screen hides everything (and later, backgrounds too) and is a toggle. Clear text hides only the words and keeps the slide selected. Picking a slide brings the words back.
 - **Auto-fit keeps lyric lines whole** when that is at least 70% of the size that wrapping would allow. The largest text is capped at one fifth of the screen height.
 - **The Display holds a screen wake lock** while it is showing something, and asks again when the window becomes visible.
-- **Looking at a song doesn't change the TV.** Picking a song shows its slides on the Control page only. Next and Space keep going through the song on the TV. Next on that song's last slide starts the first slide of the song being viewed. Previous never leaves the song on the TV. Clicking any slide shows it straight away. When the TV is showing a different song from the one being viewed, the song list marks it "On the TV", and a note with a **Go to that song** button explains this.
+- **Looking at a song doesn't change the TV.** Picking a song shows its slides on the Control page only. Next and Space keep going through the song on the TV. Next on that song's last slide starts the first slide of the song being viewed (in a service, see Service order). Previous never leaves the song on the TV. Clicking any slide shows it straight away. When the TV is showing a different song from the one being viewed, the song list marks it "On the TV", and a note with a **Go to that song** button explains this.
 - The Control page keeps the song on the TV, its slide, and the song being viewed in `sessionStorage`, so a reload carries on from the same place. Saved values that no longer match a song are dropped.
 
 ### Look
@@ -184,3 +203,4 @@ Add one line per decision, newest at the bottom, with the date.
 - 2026-10-17: On phones, Keep your songs safe moves below the slides. The backup reminder only shows while no slide has been put on the TV in this session.
 - 2026-10-17: Bible text: KJV (1769) and WEB Updated (`engwebu`, "the LORD"), both public domain, converted once from eBible.org's USFM by `tools/make-bible-data.py` into `data/kjv.json` and `data/web.json`. USFM is used because it marks Psalm titles separately, so they never join verse 1. Footnotes, headings, Psalm titles and the Apocrypha are left out; verse words are kept exactly.
 - 2026-10-17: Bible tab added. Passages are items like songs (same Next, Black screen, reload and "On the TV" rules). One verse per slide by default, with an option for two short verses. Verses over 200 characters are split across slides. The TV shows the reference and translation small at the bottom (`caption` in the state message). Translations are listed only in `js/bibles.js`, and only references are saved, so ESV can be added later as one more entry.
+- 2026-10-17: Service order added: a third tab with saved services (name and date), built with Add to service, reordered by dragging or Up/Down, and run with Next from one item to the next. Services are stored in IndexedDB (database version 2, store `services`) as references only. A song opened from the Songs or Bible tab still plays next, then the service carries on. Moving or removing items while the service runs never changes the TV. Backups include every service, and Share can include services with their songs; restored services are relinked to the songs on this device, and a different service with the same id is added as a copy.

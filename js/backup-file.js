@@ -8,12 +8,16 @@
 //     kind: 'backup' | 'shared',
 //     version: 1,
 //     savedAt: '2026-10-17T19:30:00.000Z',
-//     songs: [ song, …, { id, deleted: true }, … ]
+//     songs: [ song, …, { id, deleted: true }, … ],
+//     services: [ service, … ]
 //   }
-// A backup holds songs the user added, edited samples and markers for deleted
-// samples. A shared file holds only the songs that were ticked.
+// A backup holds songs the user added, edited samples, markers for deleted
+// samples, and every service. A shared file holds only the songs and services
+// that were ticked. `services` came later; files without it still work, and
+// older versions of the app just ignore it.
 
 import { isSample, newSongId, sameWords } from './library.js';
+import { cleanService, newId, sameService } from './service.js';
 
 export const APP_NAME = 'Worship Presenter';
 export const FORMAT_VERSION = 1;
@@ -22,13 +26,14 @@ const MAX_FILE_BYTES = 10 * 1024 * 1024;
 // Shown when a file can't be used. The message is written for the volunteer.
 export class FileProblem extends Error {}
 
-export function makeFile(kind, records, now = new Date()) {
+export function makeFile(kind, records, now = new Date(), services = []) {
   const file = {
     app: APP_NAME,
     kind,
     version: FORMAT_VERSION,
     savedAt: now.toISOString(),
     songs: records.map((record) => (record.deleted ? { id: record.id, deleted: true } : cleanSong(record))),
+    services: services.map(cleanService).filter(Boolean),
   };
   return JSON.stringify(file, null, 2);
 }
@@ -41,7 +46,8 @@ export function fileName(kind, now = new Date()) {
   return `${kind === 'shared' ? 'shared-songs' : 'worship-songs'}-${date}.json`;
 }
 
-// Checks a file's text. Returns { kind, songs, markers, skipped }, or throws a
+// Checks a file's text. Returns { kind, songs, markers, services, skipped,
+// skippedServices }, or throws a
 // FileProblem that explains what's wrong in plain words.
 export function readFile(text, size = text.length) {
   if (size > MAX_FILE_BYTES) {
@@ -88,12 +94,23 @@ export function readFile(text, size = text.length) {
     songs.push(song);
   });
 
-  if (!songs.length && !markers.length) {
+  const services = [];
+  let skippedServices = 0;
+  const serviceIds = new Set();
+  (Array.isArray(file.services) ? file.services : []).forEach((raw) => {
+    const service = cleanService(raw);
+    if (!service) return (skippedServices += 1);
+    if (serviceIds.has(service.id)) return;
+    serviceIds.add(service.id);
+    services.push(service);
+  });
+
+  if (!songs.length && !markers.length && !services.length) {
     throw new FileProblem(
       skipped ? 'None of the songs in this file could be read, so nothing can be restored.' : 'This file has no songs in it.'
     );
   }
-  return { kind: file.kind === 'shared' ? 'shared' : 'backup', songs, markers, skipped };
+  return { kind: file.kind === 'shared' ? 'shared' : 'backup', songs, markers, services, skipped, skippedServices };
 }
 
 // Works out what restoring a file would do, given everything in the library.
@@ -101,8 +118,10 @@ export function readFile(text, size = text.length) {
 //   same       songs this device already has with the same title and words
 //   conflicts  [{ incoming, existing, choice }] songs this device has, but different
 //   hides      sample songs that were deleted when the backup was made
+//   services   { added, same, copies } services in the file: new, the same as
+//              yours, or different from yours (added as a copy, never replacing)
 // A song is matched by its id first, then by its title.
-export function planRestore(file, records) {
+export function planRestore(file, records, existingServices = []) {
   const live = records.filter((record) => !record.deleted);
   const byId = new Map(live.map((record) => [record.id, record]));
   const byTitle = new Map();
@@ -112,7 +131,18 @@ export function planRestore(file, records) {
   });
   const matched = new Set();
 
-  const plan = { kind: file.kind, added: [], same: [], conflicts: [], hides: [], skipped: file.skipped };
+  const plan = {
+    kind: file.kind,
+    added: [],
+    same: [],
+    conflicts: [],
+    hides: [],
+    skipped: file.skipped,
+    // The id each song in the file has on this device, when it's not its own.
+    matchedIds: new Map(),
+    services: { added: [], same: [], copies: [] },
+    skippedServices: file.skippedServices ?? 0,
+  };
   file.songs.forEach((incoming) => {
     let existing = byId.get(incoming.id);
     if (!existing || matched.has(existing.id)) {
@@ -121,11 +151,24 @@ export function planRestore(file, records) {
     }
     if (!existing) return plan.added.push(incoming);
     matched.add(existing.id);
+    plan.matchedIds.set(incoming.id, existing.id);
     if (sameWords(existing, incoming)) return plan.same.push(incoming);
     // If yours is just the sample as it came with the app, there's nothing of
     // yours to lose, so the file's version is suggested.
     const pristine = isSample(existing.id) && existing.edited !== true;
-    plan.conflicts.push({ incoming, existing, pristine, choice: pristine ? 'theirs' : 'mine' });
+    // The id a second copy gets, worked out now so services can point to it.
+    const copyId = incoming.id === existing.id ? newSongId() : incoming.id;
+    plan.conflicts.push({ incoming, existing, pristine, copyId, choice: pristine ? 'theirs' : 'mine' });
+  });
+
+  const suffix = file.kind === 'shared' ? ' (shared)' : ' (from backup)';
+  const servicesById = new Map(existingServices.map((service) => [service.id, service]));
+  (file.services ?? []).forEach((incoming) => {
+    const existing = servicesById.get(incoming.id);
+    if (!existing) return plan.services.added.push(incoming);
+    // Compared as it would be saved, pointing to the songs on this device.
+    if (sameService(existing, relink(incoming, plan.matchedIds))) return plan.services.same.push(incoming);
+    plan.services.copies.push({ ...incoming, id: newId(), name: incoming.name + suffix });
   });
 
   // A deleted sample is only hidden again if it hasn't been changed here.
@@ -144,15 +187,33 @@ export function planRestore(file, records) {
 export function recordsFor(plan) {
   const suffix = plan.kind === 'shared' ? ' (shared)' : ' (from backup)';
   const records = [...plan.added];
-  plan.conflicts.forEach(({ incoming, existing, choice }) => {
+  plan.conflicts.forEach((conflict) => {
+    const { incoming, existing, choice } = conflict;
     if (choice === 'theirs') records.push({ ...incoming, id: existing.id });
-    if (choice === 'both') {
-      const id = incoming.id === existing.id ? newSongId() : incoming.id;
-      records.push({ ...incoming, id, title: incoming.title + suffix });
-    }
+    if (choice === 'both') records.push({ ...incoming, id: conflict.copyId, title: incoming.title + suffix });
   });
   plan.hides.forEach(({ id }) => records.push({ id, deleted: true }));
   return records;
+}
+
+// The services to write for a plan. Each song in them points to the song as
+// it is on this device after the restore: a song matched by title points to
+// yours, and with Keep both it points to the file's copy.
+export function servicesFor(plan) {
+  const ids = new Map(plan.matchedIds);
+  plan.conflicts.forEach(({ incoming, copyId, choice }) => {
+    if (choice === 'both') ids.set(incoming.id, copyId);
+  });
+  return [...plan.services.added, ...plan.services.copies].map((service) => relink(service, ids));
+}
+
+function relink(service, ids) {
+  return {
+    ...service,
+    items: service.items.map((item) =>
+      item.type === 'song' && ids.has(item.songId) ? { ...item, songId: ids.get(item.songId) } : item
+    ),
+  };
 }
 
 // What a plan did, in counts.
@@ -162,6 +223,7 @@ export function countChanges(plan) {
     added: plan.added.length + choices.filter((choice) => choice === 'both').length,
     replaced: choices.filter((choice) => choice === 'theirs').length,
     hidden: plan.hides.length,
+    services: plan.services.added.length + plan.services.copies.length,
   };
 }
 

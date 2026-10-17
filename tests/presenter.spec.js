@@ -4,6 +4,7 @@
 // Phase 3: adding, editing, deleting and searching songs.
 // Phase 4: backing up, restoring and sharing songs, and the backup reminder.
 // Phase 5: the phone layout and reminder fixes, and Bible verses.
+// Phase 6: the service order.
 //
 // Every test gets a fresh browser profile, so storage starts empty and the
 // sample songs are added on first load.
@@ -1540,5 +1541,634 @@ test.describe('Phase 5: Bible verses', () => {
     for (const id of ['#previous', '#next', '#black', '#clear']) await expect(page.locator(id)).toBeInViewport();
     await page.locator('#tab-songs').click();
     await expect(page.locator('#keep-safe')).toBeVisible();
+  });
+});
+
+test.describe('Phase 6: service order', () => {
+  const fs = require('fs');
+  const button = (page, name) => page.getByRole('button', { name, exact: true });
+  const rows = (page) => page.locator('.service-item');
+  const row = (page, i) => rows(page).nth(i);
+  const rowTitles = (page) => page.locator('.service-item .service-title').allTextContents();
+  const nextLine = (page) => page.locator('#service-next');
+  const tvCaption = (tv) => tv.locator('#caption');
+
+  async function addSong(page, title) {
+    await page.locator('#tab-songs').click();
+    await songButton(page, title).click();
+    await expect(page.locator('#song-title')).toHaveText(title);
+    await page.locator('#add-to-service').click();
+  }
+
+  async function addPassage(page, reference, title) {
+    await page.locator('#tab-bible').click();
+    await page.locator('#bible-ref').fill(reference);
+    await page.locator('#bible-ref').press('Enter');
+    await expect(page.locator('#song-title')).toHaveText(title);
+    await page.locator('#add-to-service').click();
+  }
+
+  async function openService(page) {
+    await page.locator('#tab-service').click();
+    await expect(page.locator('#service-tab')).toBeVisible();
+  }
+
+  // Opens a row's slides and puts its first slide on the TV.
+  async function startRow(page, i, title) {
+    await row(page, i).locator('.service-open').click();
+    await expect(page.locator('#song-title')).toHaveText(title);
+    await tile(page, 0).click();
+    await expectLiveTile(page, 0);
+  }
+
+  async function pressNext(page, times = 1) {
+    for (let i = 0; i < times; i += 1) await page.keyboard.press('ArrowRight');
+  }
+
+  // Come, Thou Fount (3 slides), John 3:16–17 (2 slides), What a Friend (3 slides).
+  async function buildService(page) {
+    await addSong(page, 'Come, Thou Fount of Every Blessing');
+    await addPassage(page, 'John 3:16-17', 'John 3:16–17 (KJV)');
+    await addSong(page, 'What a Friend We Have in Jesus');
+    await openService(page);
+    await expect(rows(page)).toHaveCount(3);
+  }
+
+  async function saveFileFrom(page, locator) {
+    const [download] = await Promise.all([page.waitForEvent('download'), locator.click()]);
+    return { name: download.suggestedFilename(), file: JSON.parse(fs.readFileSync(await download.path(), 'utf8')) };
+  }
+
+  async function chooseFile(page, contents) {
+    await page.locator('#restore-file').setInputFiles({
+      name: 'backup.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(contents)),
+    });
+    await expect(page.locator('#songs-file')).toBeVisible();
+  }
+
+  async function freshBrowser(page) {
+    await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          localStorage.clear();
+          sessionStorage.clear();
+          indexedDB.deleteDatabase('worship-presenter').onsuccess = resolve;
+        })
+    );
+    await page.reload();
+    await expect(page.locator('.song')).toHaveCount(8);
+  }
+
+  const storedServices = (page) =>
+    page.evaluate(
+      () =>
+        new Promise((resolve, reject) => {
+          const open = indexedDB.open('worship-presenter');
+          open.onerror = () => reject(open.error);
+          open.onsuccess = () => {
+            const request = open.result.transaction('services').objectStore('services').getAll();
+            request.onsuccess = () => {
+              resolve(request.result);
+              open.result.close();
+            };
+          };
+        })
+    );
+
+  test('songs and passages are added from their tabs, and the first one makes a service for today', async ({ page }) => {
+    await openControl(page);
+    await openService(page);
+    await expect(page.locator('#service-empty')).toHaveText(/No service yet/);
+    await expect(button(page, 'Rename')).toBeHidden();
+
+    await addSong(page, 'Amazing Grace');
+    await expect(page.locator('#added-note')).toHaveText('Added to Meeting. It has 1 item.');
+    await addPassage(page, 'Ps 23', 'Psalm 23 (KJV)');
+    await expect(page.locator('#added-note')).toHaveText('Added to Meeting. It has 2 items.');
+    await addSong(page, 'Rock of Ages');
+
+    await openService(page);
+    expect(await rowTitles(page)).toEqual(['Amazing Grace', 'Psalm 23', 'Rock of Ages']);
+    await expect(row(page, 1).locator('.song-detail')).toHaveText('KJV');
+    await expect(page.locator('#service-name')).toHaveText('Meeting');
+    const date = await page.evaluate(() =>
+      new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
+    );
+    await expect(page.locator('#service-date')).toHaveText(`${date} · 3 items`);
+    // Only references are stored: no words.
+    const [stored] = await storedServices(page);
+    expect(stored.items.map((item) => item.type)).toEqual(['song', 'passage', 'song']);
+    expect(JSON.stringify(stored)).not.toContain('Amazing grace! How sweet');
+    expect(stored.items[1]).toMatchObject({ translation: 'kjv', ref: { book: 18, startChapter: 23 } });
+
+    // Opening an item shows its slides on the Service tab.
+    await row(page, 1).locator('.service-open').click();
+    await expect(page.locator('#song-title')).toHaveText('Psalm 23 (KJV)');
+    await expect(page.locator('#service-tab')).toBeVisible();
+    await expect(row(page, 1).locator('.service-open')).toHaveAttribute('aria-current', 'true');
+  });
+
+  test('items are moved by dragging or with Up and Down, and removed', async ({ page }) => {
+    await openControl(page);
+    await buildService(page);
+    await rows(page).nth(0).dragTo(rows(page).nth(2));
+    expect(await rowTitles(page)).toEqual(['John 3:16–17', 'What a Friend We Have in Jesus', 'Come, Thou Fount of Every Blessing']);
+    await rows(page).nth(2).dragTo(rows(page).nth(0));
+    expect(await rowTitles(page)).toEqual(['Come, Thou Fount of Every Blessing', 'John 3:16–17', 'What a Friend We Have in Jesus']);
+
+    await expect(row(page, 0).getByRole('button', { name: 'Move Come, Thou Fount of Every Blessing up' })).toBeDisabled();
+    await row(page, 0).getByRole('button', { name: 'Move Come, Thou Fount of Every Blessing down' }).click();
+    expect(await rowTitles(page)).toEqual(['John 3:16–17', 'Come, Thou Fount of Every Blessing', 'What a Friend We Have in Jesus']);
+    // The keyboard stays on the item that moved.
+    expect(await page.evaluate(() => document.activeElement.getAttribute('aria-label'))).toBe(
+      'Move Come, Thou Fount of Every Blessing down'
+    );
+    await row(page, 2).getByRole('button', { name: 'Move What a Friend We Have in Jesus up' }).click();
+    expect(await rowTitles(page)).toEqual(['John 3:16–17', 'What a Friend We Have in Jesus', 'Come, Thou Fount of Every Blessing']);
+
+    await row(page, 0).getByRole('button', { name: 'Remove John 3:16–17 from the service' }).click();
+    expect(await rowTitles(page)).toEqual(['What a Friend We Have in Jesus', 'Come, Thou Fount of Every Blessing']);
+    await expect(page.locator('#service-date')).toHaveText(/2 items$/);
+
+    // The new order is kept.
+    await page.reload();
+    await openService(page);
+    expect(await rowTitles(page)).toEqual(['What a Friend We Have in Jesus', 'Come, Thou Fount of Every Blessing']);
+  });
+
+  test('Next goes through the whole service, from the last slide of one item to the first of the next', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await buildService(page);
+    await expect(nextLine(page)).toBeHidden();
+
+    await startRow(page, 0, 'Come, Thou Fount of Every Blessing');
+    await expect(row(page, 0).locator('.service-mark')).toHaveText('On the TV');
+    await expect(row(page, 1).locator('.service-mark')).toHaveText('Next');
+    await expect(nextLine(page)).toHaveText('Next in the service: John 3:16–17 (KJV)');
+    await expect(page.locator('#tab-service .tab-live')).toBeHidden();
+
+    await pressNext(page, 2);
+    await expectLiveTile(page, 2);
+    // Over into the passage. This page follows along, because it was showing the TV.
+    await pressNext(page);
+    await expect(tvText(tv)).toHaveText(/^For God so loved/);
+    await expect(tvCaption(tv)).toHaveText('John 3:16 · KJV');
+    await expect(page.locator('#song-title')).toHaveText('John 3:16–17 (KJV)');
+    await expectLiveTile(page, 0);
+    await expect(row(page, 1).locator('.service-mark')).toHaveText('On the TV');
+    await expect(nextLine(page)).toHaveText('Next in the service: What a Friend We Have in Jesus');
+    await expect(page.locator('#live-note')).toHaveText('The TV is showing John 3:16–17 (KJV), Verse 16 (slide 1 of 2).');
+
+    await page.locator('#next').click();
+    await page.locator('#next').click();
+    await expect(tvText(tv)).toHaveText(/^What a friend we have in Jesus/);
+    await expect(tvCaption(tv)).toHaveText('');
+    await expect(nextLine(page)).toHaveText('That’s the end of the service.');
+
+    // Previous stays within the item on the TV.
+    await page.keyboard.press('ArrowLeft');
+    await expect(tvText(tv)).toHaveText(/^What a friend we have in Jesus/);
+
+    // At the very end, Next stays on the last slide.
+    await pressNext(page, 3);
+    await expectLiveTile(page, 2);
+    await expect(row(page, 2).locator('.service-mark')).toHaveText('On the TV');
+
+    // On another tab, the Service tab shows it has what's on the TV.
+    await page.locator('#tab-songs').click();
+    await expect(page.locator('#tab-service .tab-live')).toBeVisible();
+    await expect(page.locator('#tab-songs .tab-live')).toBeHidden();
+  });
+
+  test('looking at a later item doesn’t change the TV; Next keeps to the order, and a click shows it at once', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await buildService(page);
+    await startRow(page, 0, 'Come, Thou Fount of Every Blessing');
+
+    await row(page, 2).locator('.service-open').click();
+    await expect(page.locator('#song-title')).toHaveText('What a Friend We Have in Jesus');
+    await expect(tvText(tv)).toHaveText(/^Come, Thou Fount/);
+    await expect(page.locator('#elsewhere-text')).toHaveText(
+      'The TV is showing Come, Thou Fount of Every Blessing, Verse 1. ' +
+        'Next keeps going through that song, then goes on to John 3:16–17 (KJV), next in the service.'
+    );
+
+    await pressNext(page, 3);
+    await expect(tvText(tv)).toHaveText(/^For God so loved/);
+    // Still looking at What a Friend: the page doesn't jump away from it.
+    await expect(page.locator('#song-title')).toHaveText('What a Friend We Have in Jesus');
+    await expect(page.locator('#elsewhere-text')).toHaveText(
+      'The TV is showing John 3:16–17 (KJV), Verse 16. Next keeps going through that passage, then starts this one.'
+    );
+
+    await tile(page, 1).click();
+    await expect(tvText(tv)).toHaveText(/^Have we trials and temptations/);
+    await expect(row(page, 2).locator('.service-mark')).toHaveText('On the TV');
+    await expect(nextLine(page)).toHaveText('That’s the end of the service.');
+
+    await expect(page.locator('#elsewhere')).toBeHidden();
+  });
+
+  test('a song picked from the Songs tab is sung after the current item, then the service carries on', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await buildService(page);
+    await startRow(page, 0, 'Come, Thou Fount of Every Blessing');
+
+    await page.locator('#tab-songs').click();
+    await songButton(page, 'Rock of Ages').click();
+    await expect(page.locator('#elsewhere-text')).toHaveText(/then starts this one\.$/);
+    await pressNext(page, 3);
+    await expect(tvText(tv)).toHaveText(/^Rock of Ages, cleft for me/);
+    // It came from the Songs tab, so the Service tab isn't marked.
+    await expect(songButton(page, 'Rock of Ages')).toHaveClass(/is-live/);
+    await expect(page.locator('#tab-service .tab-live')).toBeHidden();
+    await expect(nextLine(page)).toHaveText('Next in the service: John 3:16–17 (KJV)');
+
+    await pressNext(page, 4);
+    await expect(tvText(tv)).toHaveText(/^For God so loved/);
+    await openService(page);
+    await expect(row(page, 1).locator('.service-mark')).toHaveText('On the TV');
+  });
+
+  test('the same song can be in a service twice, and the right one is marked', async ({ page }) => {
+    await openControl(page);
+    await addSong(page, 'Amazing Grace');
+    await addSong(page, 'Rock of Ages');
+    await addSong(page, 'Amazing Grace');
+    await openService(page);
+    await startRow(page, 2, 'Amazing Grace');
+    await expect(row(page, 2).locator('.service-mark')).toHaveText('On the TV');
+    await expect(row(page, 0).locator('.service-mark')).toBeHidden();
+    await expect(nextLine(page)).toHaveText('That’s the end of the service.');
+
+    await startRow(page, 0, 'Amazing Grace');
+    await expect(row(page, 0).locator('.service-mark')).toHaveText('On the TV');
+    await expect(row(page, 2).locator('.service-mark')).toBeHidden();
+    await pressNext(page, 5);
+    await expect(row(page, 1).locator('.service-mark')).toHaveText('On the TV');
+    await pressNext(page, 4);
+    await expect(row(page, 2).locator('.service-mark')).toHaveText('On the TV');
+  });
+
+  test('services can be made, renamed, duplicated, deleted and switched, and are kept', async ({ page }) => {
+    await openControl(page);
+    await addSong(page, 'Amazing Grace');
+    await openService(page);
+
+    await button(page, 'Rename').click();
+    await expect(page.locator('#service-name-input')).toBeFocused();
+    await page.locator('#service-name-input').fill('');
+    await button(page, 'Save service').click();
+    await expect(page.locator('#service-name-error')).toHaveText(/Give the service a name/);
+    await page.locator('#service-name-input').fill('Friday meeting');
+    await page.locator('#service-date-input').fill('2026-10-23');
+    await button(page, 'Save service').click();
+    await expect(page.locator('#service-name')).toHaveText('Friday meeting');
+    await expect(page.locator('#service-date')).toHaveText(/1 item$/);
+    await expect(page.locator('#service-date')).toHaveText(/23/);
+
+    await button(page, 'Duplicate').click();
+    await expect(page.locator('#service-name')).toHaveText('Friday meeting (copy)');
+    expect(await rowTitles(page)).toEqual(['Amazing Grace']);
+    await expect(page.locator('.other-service')).toHaveCount(1);
+
+    // A new, empty service.
+    await button(page, '+ New service').click();
+    await page.locator('#service-name-input').fill('Prayer night');
+    await page.locator('#service-date-input').fill('2026-11-06');
+    await button(page, 'Save service').click();
+    await expect(page.locator('#service-name')).toHaveText('Prayer night');
+    await expect(rows(page)).toHaveCount(0);
+    await expect(page.locator('#service-empty')).toHaveText(/This service is empty/);
+    // Newest date first.
+    await expect(page.locator('.other-service-name')).toHaveText(['Friday meeting', 'Friday meeting (copy)']);
+    await addSong(page, 'Rock of Ages');
+
+    // Cancel leaves things as they were.
+    await openService(page);
+    await button(page, '+ New service').click();
+    await button(page, 'Cancel').click();
+    await expect(page.locator('.other-service')).toHaveCount(2);
+
+    // Delete asks first.
+    await page.locator('.other-service', { hasText: 'Friday meeting (copy)' }).click();
+    await expect(page.locator('#service-name')).toHaveText('Friday meeting (copy)');
+    await button(page, 'Delete').click();
+    await expect(page.locator('#service-confirm-text')).toHaveText(
+      'Delete Friday meeting (copy)? The songs stay in your song list.'
+    );
+    await button(page, 'No, keep it').click();
+    await expect(page.locator('#service-name')).toHaveText('Friday meeting (copy)');
+    await button(page, 'Delete').click();
+    await button(page, 'Yes, delete it').click();
+    await expect(page.locator('#service-name')).toHaveText('Prayer night');
+    await expect(page.locator('.other-service-name')).toHaveText(['Friday meeting']);
+    await expect(page.locator('.song')).toHaveCount(8);
+
+    // Everything is still there after closing and opening the page.
+    await page.reload();
+    await openService(page);
+    await expect(page.locator('#service-name')).toHaveText('Prayer night');
+    expect(await rowTitles(page)).toEqual(['Rock of Ages']);
+    await page.locator('.other-service', { hasText: 'Friday meeting' }).click();
+    expect(await rowTitles(page)).toEqual(['Amazing Grace']);
+    expect((await storedServices(page)).map((s) => s.name).sort()).toEqual(['Friday meeting', 'Prayer night']);
+  });
+
+  test('a reload carries on from the same place in the service', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await buildService(page);
+    await startRow(page, 0, 'Come, Thou Fount of Every Blessing');
+    await pressNext(page, 3);
+    await expect(tvText(tv)).toHaveText(/^For God so loved/);
+
+    await page.reload();
+    await expect(page.locator('#service-tab')).toBeVisible();
+    await expect(page.locator('#song-title')).toHaveText('John 3:16–17 (KJV)');
+    await expect(row(page, 1).locator('.service-mark')).toHaveText('On the TV');
+    await expect(nextLine(page)).toHaveText('Next in the service: What a Friend We Have in Jesus');
+    await expectLiveTile(page, 0);
+    await pressNext(page, 2);
+    await expect(tvText(tv)).toHaveText(/^What a friend we have in Jesus/);
+  });
+
+  test('a deleted song shows plainly, Next skips it, and it comes back if the song does', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await addSong(page, 'Come, Thou Fount of Every Blessing');
+    await addSong(page, 'Rock of Ages');
+    await addSong(page, 'What a Friend We Have in Jesus');
+
+    await page.locator('#tab-songs').click();
+    await songButton(page, 'Rock of Ages').click();
+    await button(page, 'Edit song').click();
+    await button(page, 'Delete song').click();
+    await button(page, 'Yes, delete it').click();
+    await expect(page.locator('#editor')).toBeHidden();
+
+    await openService(page);
+    await expect(row(page, 1).locator('.service-title')).toHaveText('Rock of Ages');
+    await expect(row(page, 1).locator('.service-missing')).toHaveText(
+      'This song isn’t in your songs any more. It will be skipped.'
+    );
+    await expect(row(page, 1).locator('.service-open')).toBeDisabled();
+
+    await startRow(page, 0, 'Come, Thou Fount of Every Blessing');
+    await expect(nextLine(page)).toHaveText('Next in the service: What a Friend We Have in Jesus');
+    await pressNext(page, 3);
+    await expect(tvText(tv)).toHaveText(/^What a friend we have in Jesus/);
+
+    // Bring it back, and the row works again.
+    await page.locator('#tab-songs').click();
+    await button(page, 'Bring back deleted sample songs').click();
+    await expect(page.locator('.song')).toHaveCount(8);
+    await openService(page);
+    await expect(row(page, 1).locator('.service-missing')).toBeHidden();
+    await expect(row(page, 1).locator('.service-open')).toBeEnabled();
+  });
+
+  test('moving items while the service is running never changes the TV', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await buildService(page);
+    await startRow(page, 1, 'John 3:16–17 (KJV)');
+    await expect(tvText(tv)).toHaveText(/^For God so loved/);
+    const sent = () => tv.evaluate(() => document.querySelector('#text').textContent);
+    const before = await sent();
+
+    // Move the item on the TV, by dragging and with the buttons.
+    await rows(page).nth(1).dragTo(rows(page).nth(2));
+    expect(await rowTitles(page)).toEqual(['Come, Thou Fount of Every Blessing', 'What a Friend We Have in Jesus', 'John 3:16–17']);
+    await expect(row(page, 2).locator('.service-mark')).toHaveText('On the TV');
+    await expect(nextLine(page)).toHaveText('That’s the end of the service.');
+    await row(page, 2).getByRole('button', { name: 'Move John 3:16–17 up' }).click();
+    await row(page, 1).getByRole('button', { name: 'Move John 3:16–17 up' }).click();
+    expect(await rowTitles(page)).toEqual(['John 3:16–17', 'Come, Thou Fount of Every Blessing', 'What a Friend We Have in Jesus']);
+    await expect(row(page, 0).locator('.service-mark')).toHaveText('On the TV');
+    // Move another item around it.
+    await row(page, 2).getByRole('button', { name: 'Move What a Friend We Have in Jesus up' }).click();
+    await expect(nextLine(page)).toHaveText('Next in the service: What a Friend We Have in Jesus');
+
+    expect(await sent()).toBe(before);
+    await expect(tvCaption(tv)).toHaveText('John 3:16 · KJV');
+    await expectLiveTile(page, 0);
+    await expect(page.locator('#live-note')).toHaveText('The TV is showing John 3:16–17 (KJV), Verse 16 (slide 1 of 2).');
+
+    // Next follows the new order.
+    await pressNext(page, 2);
+    await expect(tvText(tv)).toHaveText(/^What a friend we have in Jesus/);
+    await pressNext(page, 3);
+    await expect(tvText(tv)).toHaveText(/^Come, Thou Fount/);
+  });
+
+  test('removing the item on the TV leaves the TV alone, and Next goes on to the one after it', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await buildService(page);
+    await startRow(page, 1, 'John 3:16–17 (KJV)');
+    await tile(page, 1).click();
+    await expect(tvText(tv)).toHaveText(/^For God sent not his Son/);
+
+    await row(page, 1).getByRole('button', { name: 'Remove John 3:16–17 from the service' }).click();
+    expect(await rowTitles(page)).toEqual(['Come, Thou Fount of Every Blessing', 'What a Friend We Have in Jesus']);
+    await expect(tvText(tv)).toHaveText(/^For God sent not his Son/);
+    await expect(tvCaption(tv)).toHaveText('John 3:17 · KJV');
+    await expectLiveTile(page, 1);
+    await expect(page.locator('#song-title')).toHaveText('John 3:16–17 (KJV)');
+    await expect(row(page, 1).locator('.service-mark')).toHaveText('Next');
+    await expect(nextLine(page)).toHaveText('Next in the service: What a Friend We Have in Jesus');
+
+    await pressNext(page);
+    await expect(tvText(tv)).toHaveText(/^What a friend we have in Jesus/);
+    await expect(row(page, 1).locator('.service-mark')).toHaveText('On the TV');
+  });
+
+  test('removing the first item while it’s on the TV, with Black screen or Clear text on, changes nothing on the TV', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await buildService(page);
+    await startRow(page, 0, 'Come, Thou Fount of Every Blessing');
+    await pressNext(page, 2);
+    await page.locator('#clear').click();
+    await expect(tvText(tv)).toHaveText('');
+    await page.keyboard.press('b');
+    await expect(tv.locator('body')).toHaveClass(/black/);
+
+    await row(page, 0).getByRole('button', { name: 'Remove Come, Thou Fount of Every Blessing from the service' }).click();
+    await expect(tv.locator('body')).toHaveClass(/black/);
+    await expect(tvText(tv)).toHaveText('');
+    await expect(page.locator('#black')).toHaveAttribute('aria-pressed', 'true');
+    await expect(row(page, 0).locator('.service-mark')).toHaveText('Next');
+
+    await page.keyboard.press('b');
+    await expect(tvText(tv)).toHaveText('');
+    await expect(tile(page, 2)).toHaveClass(/is-hidden/);
+    await pressNext(page);
+    await expect(tvText(tv)).toHaveText(/^For God so loved/);
+    await expect(row(page, 0).locator('.service-mark')).toHaveText('On the TV');
+  });
+
+  test('Back up my songs includes services, and restoring brings them back linked to the songs', async ({ page }) => {
+    await openControl(page);
+    await page.locator('#add-song').click();
+    await page.locator('#editor-song-title').fill('Our Song');
+    await page.locator('#editor-lyrics').fill('Line one\nLine two');
+    await button(page, 'Save song').click();
+    await expect(page.locator('#editor')).toBeHidden();
+    await addSong(page, 'Our Song');
+    await addPassage(page, 'Ps 23', 'Psalm 23 (KJV)');
+    await addSong(page, 'Amazing Grace');
+
+    await page.locator('#tab-songs').click();
+    const { file } = await saveFileFrom(page, button(page, 'Back up my songs'));
+    await expect(page.locator('#file-note')).toHaveText(/with 1 song you added or changed and 1 service\./);
+    expect(file.services).toHaveLength(1);
+    expect(file.services[0].items.map((item) => item.type)).toEqual(['song', 'passage', 'song']);
+    const ourId = file.songs[0].id;
+
+    // Another browser that already has "Our Song" under a different id.
+    await freshBrowser(page);
+    await page.locator('#add-song').click();
+    await page.locator('#editor-song-title').fill('Our Song');
+    await page.locator('#editor-lyrics').fill('Line one\nLine two');
+    await button(page, 'Save song').click();
+    await expect(page.locator('#editor')).toBeHidden();
+
+    await chooseFile(page, file);
+    await expect(page.locator('#restore-summary')).toHaveText('No new songs, 1 song you already have.');
+    await expect(page.locator('#restore-services')).toBeVisible();
+    await expect(page.locator('#restore-services-list li')).toHaveText(['Meeting']);
+    await button(page, 'Restore songs').click();
+    await expect(page.locator('#file-note')).toHaveText('Done. We added 1 service.');
+
+    await openService(page);
+    expect(await rowTitles(page)).toEqual(['Our Song', 'Psalm 23', 'Amazing Grace']);
+    await expect(page.locator('.service-missing:visible')).toHaveCount(0);
+    const [stored] = await storedServices(page);
+    expect(stored.items[0].songId).not.toBe(ourId);
+
+    // Restoring the same file again changes nothing.
+    await page.locator('#tab-songs').click();
+    await chooseFile(page, file);
+    await expect(page.locator('#restore-services-text')).toHaveText('1 service is the same as yours and will be left alone.');
+    await button(page, 'Restore songs').click();
+    await expect(page.locator('#file-note')).toHaveText('Nothing needed to change. You already have these songs.');
+    expect(await storedServices(page)).toHaveLength(1);
+
+    // A different version of a service you have is added as a copy; yours stays.
+    const changed = { ...file, services: [{ ...file.services[0], items: file.services[0].items.slice(1) }] };
+    await chooseFile(page, changed);
+    await expect(page.locator('#restore-services-text')).toHaveText(
+      '1 service will be added. Open it from the Service tab. ' +
+        'You already have a different version of one, so it’s added as a copy and yours isn’t changed.'
+    );
+    await expect(page.locator('#restore-services-list li')).toHaveText(['Meeting (from backup)']);
+    await button(page, 'Restore songs').click();
+    await openService(page);
+    expect(await rowTitles(page)).toEqual(['Our Song', 'Psalm 23', 'Amazing Grace']);
+    await page.locator('.other-service', { hasText: 'Meeting (from backup)' }).click();
+    expect(await rowTitles(page)).toEqual(['Psalm 23', 'Amazing Grace']);
+  });
+
+  test('a service can be shared with its songs, and another group runs the same meeting', async ({ page }) => {
+    await openControl(page);
+    await page.locator('#add-song').click();
+    await page.locator('#editor-song-title').fill('Group Song');
+    await page.locator('#editor-lyrics').fill('First slide\n\nSecond slide');
+    await button(page, 'Save song').click();
+    await expect(page.locator('#editor')).toBeHidden();
+    await addSong(page, 'Group Song');
+    await addPassage(page, 'John 3:16-17', 'John 3:16–17 (KJV)');
+    await addSong(page, 'Rock of Ages');
+    await openService(page);
+    await button(page, 'Rename').click();
+    await page.locator('#service-name-input').fill('Friday meeting');
+    await button(page, 'Save service').click();
+
+    await page.locator('#tab-songs').click();
+    await button(page, 'Share songs').click();
+    await page.locator('#share-service-list label', { hasText: 'Friday meeting' }).click();
+    await expect(page.locator('#share-list input:checked')).toHaveCount(2);
+    const go = page.locator('#share-go');
+    await expect(go).toHaveText('Save 2 songs and 1 service to a file');
+    const { name, file } = await saveFileFrom(page, go);
+    expect(name).toMatch(/^shared-songs-\d{4}-\d{2}-\d{2}\.json$/);
+    expect(file.kind).toBe('shared');
+    expect(file.songs.map((s) => s.title).sort()).toEqual(['Group Song', 'Rock of Ages']);
+    expect(file.services.map((s) => s.name)).toEqual(['Friday meeting']);
+    await expect(page.locator('#file-note')).toHaveText(
+      `Saved 2 songs and 1 service as ${name}. Send this file to the other group. They add them by pressing Restore from backup.`
+    );
+
+    await freshBrowser(page);
+    await chooseFile(page, file);
+    await expect(page.locator('#songs-file-title')).toHaveText('Add shared songs');
+    await expect(page.locator('#restore-services-list li')).toHaveText(['Friday meeting']);
+    await button(page, 'Add songs').click();
+    await expect(page.locator('#file-note')).toHaveText('Done. We added 1 song and 1 service.');
+
+    const tv = await openDisplay(page);
+    await openService(page);
+    await expect(page.locator('#service-name')).toHaveText('Friday meeting');
+    expect(await rowTitles(page)).toEqual(['Group Song', 'John 3:16–17', 'Rock of Ages']);
+    await startRow(page, 0, 'Group Song');
+    await pressNext(page, 2);
+    await expect(tvText(tv)).toHaveText(/^For God so loved/);
+    await pressNext(page, 2);
+    await expect(tvText(tv)).toHaveText(/^Rock of Ages/);
+  });
+
+  test('a song library from before services keeps its songs and gains services', async ({ page }) => {
+    await page.goto('/display.html');
+    await page.evaluate(
+      () =>
+        new Promise((resolve, reject) => {
+          const open = indexedDB.open('worship-presenter', 1);
+          open.onupgradeneeded = () => open.result.createObjectStore('songs', { keyPath: 'id' });
+          open.onsuccess = () => {
+            const tx = open.result.transaction('songs', 'readwrite');
+            tx.objectStore('songs').put({ id: 'old-song', title: 'An Old Song', sections: [{ name: 'Slide 1', text: 'Still here' }] });
+            tx.oncomplete = () => {
+              open.result.close();
+              resolve();
+            };
+          };
+          open.onerror = () => reject(open.error);
+        })
+    );
+    await page.goto('/');
+    await expect(page.locator('.song')).toHaveCount(9);
+    await addSong(page, 'An Old Song');
+    await page.reload();
+    await openService(page);
+    expect(await rowTitles(page)).toEqual(['An Old Song']);
+  });
+
+  test.describe('on a phone', () => {
+    test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+    test('the Service tab works with Up and Down, and nothing scrolls sideways', async ({ page }) => {
+      await openControl(page);
+      await buildService(page);
+      await expect(page.locator('.service-grip').first()).toBeHidden();
+      await expect(page.locator('#keep-safe')).toBeHidden();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+      await row(page, 1).getByRole('button', { name: 'Move John 3:16–17 down' }).tap();
+      expect(await rowTitles(page)).toEqual(['Come, Thou Fount of Every Blessing', 'What a Friend We Have in Jesus', 'John 3:16–17']);
+
+      // Opening an item scrolls to its slides.
+      await row(page, 2).locator('.service-open').tap();
+      await expect(page.locator('#song-title')).toHaveText('John 3:16–17 (KJV)');
+      await expect(page.locator('#song-title')).toBeInViewport();
+      for (const id of ['#previous', '#next', '#black', '#clear']) await expect(page.locator(id)).toBeInViewport();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    });
   });
 });

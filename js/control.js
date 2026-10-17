@@ -15,12 +15,20 @@ import {
   slidesFor,
 } from './library.js';
 import { sameVerseSlide, slidesForPassage } from './passage.js';
+import { passageItem, songItem, validRef } from './service.js';
+import { createServicePanel } from './service-panel.js';
 
 // Songs and Bible passages are both "items": something with slides. The TV
 // shows one slide of one item (liveId + index), and this page shows the slides
 // of the item being viewed (viewId). Both work the same way for songs and
 // passages. Kept for this tab, with the open tab and the list of passages
 // shown, so a reload carries on where it was.
+//
+// In a service, items are also known by their entry key (the same song can be
+// in a service twice). liveEntry is the service entry on the TV (null when
+// what's on the TV was picked from the Songs or Bible tab), viewEntry the one
+// being looked at, and serviceAt the entry Next carries on after: the last
+// one put on the TV, or 'start' when it should go to the first item.
 const STORAGE_KEY = 'worship-presenter:control';
 const MAX_PASSAGES = 10;
 const state = {
@@ -31,6 +39,9 @@ const state = {
   viewId: null,
   tab: 'songs',
   passages: [],
+  liveEntry: null,
+  viewEntry: null,
+  serviceAt: null,
   ...loadState(),
 };
 let displayOpen = false;
@@ -51,8 +62,13 @@ const el = {
   slidesPanel: document.querySelector('.slides-panel'),
   tabSongs: document.getElementById('tab-songs'),
   tabBible: document.getElementById('tab-bible'),
+  tabService: document.getElementById('tab-service'),
   songsTab: document.getElementById('songs-tab'),
   bibleTab: document.getElementById('bible-tab'),
+  serviceTab: document.getElementById('service-tab'),
+  addToService: document.getElementById('add-to-service'),
+  addedNote: document.getElementById('added-note'),
+  serviceNext: document.getElementById('service-next'),
   keepSafe: document.getElementById('keep-safe'),
   songs: document.getElementById('songs'),
   search: document.getElementById('search'),
@@ -102,13 +118,14 @@ el.next.addEventListener('click', () => runAction('next'));
 el.black.addEventListener('click', () => runAction('black'));
 el.clear.addEventListener('click', clearText);
 el.goLiveSong.addEventListener('click', (event) => {
-  showItem(state.liveId);
+  showItem(state.liveId, state.liveEntry);
   // Keyboard users land on the slide that's on the TV.
   if (event.detail === 0) tiles[state.index]?.focus();
   else el.songTitle.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
 });
 el.tabSongs.addEventListener('click', () => setTab('songs'));
 el.tabBible.addEventListener('click', () => setTab('bible'));
+el.tabService.addEventListener('click', () => setTab('service'));
 
 // Adding, editing and deleting songs. The TV only changes once a change is saved.
 const editor = createEditor({
@@ -140,7 +157,12 @@ const backup = createBackup({
   onOpen: () => (el.main.hidden = true),
   onClose: () => (el.main.hidden = false),
   getSongs: () => songs,
-  onImported: () => reloadLibrary(state.viewId),
+  getServices: () => service.all,
+  onImported: async () => {
+    await service.reload();
+    await reloadLibrary(state.viewId);
+    serviceChanged();
+  },
   // The reminder waits until nothing has been put on the TV.
   isTvInUse: () => state.index >= 0,
 });
@@ -172,6 +194,35 @@ const bible = createBiblePanel({
   },
   onLayoutChange: relayOutPassages,
 });
+
+// The Service tab. Opening an item doesn't change the TV either; Next goes
+// through the service in order.
+const service = createServicePanel({
+  resolve: describeItem,
+  marks: () => ({
+    liveKey: liveSlide() ? state.liveEntry : null,
+    nextKey: liveSlide() ? nextInService()?.entry ?? null : null,
+    viewKey: state.viewEntry,
+  }),
+  onOpenItem: async (item) => {
+    const target = targetFor(item);
+    if (!target || !(await ensureLoaded(target.id, target.passage, service.showError))) return;
+    service.showError('');
+    showItem(target.id, item.key);
+    scrollToSlidesOnPhone();
+  },
+  onRemove: (current, key) => {
+    // The TV stays as it is. Next carries on with the item that came after it.
+    if (key !== state.liveEntry && key !== state.serviceAt) return;
+    const i = current.items.findIndex((item) => item.key === key);
+    if (key === state.serviceAt) state.serviceAt = i > 0 ? current.items[i - 1].key : 'start';
+    if (key === state.liveEntry) state.liveEntry = null;
+    if (key === state.viewEntry) state.viewEntry = null;
+    saveState();
+  },
+  onChange: serviceChanged,
+});
+el.addToService.addEventListener('click', addToService);
 
 // Keyboard shortcuts. Space and Enter on a focused button only press that button.
 document.addEventListener('keydown', (event) => {
@@ -207,6 +258,7 @@ start();
 
 async function start() {
   await loadSongs();
+  await service.load();
   await restorePassages();
   checkState();
   ready = true;
@@ -214,8 +266,10 @@ async function start() {
   buildPassageList();
   buildTiles();
   render();
+  service.render();
   sendState();
   backup.refreshReminder();
+  preloadService();
 }
 
 async function loadSongs() {
@@ -242,6 +296,7 @@ async function reloadLibrary(viewId) {
   buildSongList();
   buildTiles();
   render();
+  service.render();
   sendState();
 }
 
@@ -336,14 +391,18 @@ function scrollToSlidesOnPhone() {
   if (phone.matches) el.songTitle.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
 }
 
-// Shows an item's slides on this page, on its own tab. The TV doesn't change.
-function showItem(id) {
+// Shows an item's slides on this page, on its own tab (the Service tab when
+// it was opened from the service). The TV doesn't change.
+function showItem(id, entry = null) {
   if (!slidesOf(id)) return;
   state.viewId = id;
-  state.tab = tabOf(id);
+  state.viewEntry = entry;
+  state.tab = entry ? 'service' : tabOf(id);
+  el.addedNote.hidden = true;
   saveState();
   buildTiles();
   render();
+  service.render();
 }
 
 // Bible passages
@@ -369,17 +428,17 @@ function makePassageSlides(entry, verses, translation = findTranslation(entry.tr
   return slidesForPassage(verses, { ref: entry.ref, translation, twoPerSlide: bible.twoPerSlide });
 }
 
-// A passage in the list whose words haven't been loaded yet (after a reload).
-async function ensureLoaded(id) {
+// A passage whose words haven't been loaded yet (after a reload, or in a
+// service). Problems are shown with showError.
+async function ensureLoaded(id, entry = state.passages.find((p) => p.id === id), showError = bible.showError) {
   if (slidesOf(id)) return true;
-  const entry = state.passages.find((p) => p.id === id);
   if (!entry) return false;
   try {
-    await loadPassage(entry);
-    bible.showError('');
+    await loadPassage({ ...entry, id });
+    showError('');
     return true;
   } catch (error) {
-    bible.showError(error.message);
+    showError(error.message);
     return false;
   }
 }
@@ -395,32 +454,29 @@ function rememberPassage(entry) {
 }
 
 // After a reload, load the words of the passage on the TV and the one being
-// viewed. Others load when picked. Anything that can't be loaded is dropped.
+// viewed, from the Bible tab's list or the service. Others load when picked.
+// Anything that can't be loaded is dropped.
 async function restorePassages() {
   state.passages = (Array.isArray(state.passages) ? state.passages : []).filter(validEntry).map((entry) => ({
     ...entry,
     id: passageId(entry.translation, entry.ref),
   }));
-  const needed = state.passages.filter((p) => p.id === state.liveId || p.id === state.viewId);
+  const fromService = (service.current?.items ?? [])
+    .filter((item) => item.type === 'passage' && validEntry(item))
+    .map((item) => ({ translation: item.translation, ref: item.ref, id: passageId(item.translation, item.ref) }));
+  const needed = new Map();
+  [...state.passages, ...fromService]
+    .filter((p) => p.id === state.liveId || p.id === state.viewId)
+    .forEach((p) => needed.set(p.id, p));
   await Promise.all(
-    needed.map((entry) =>
+    [...needed.values()].map((entry) =>
       loadPassage(entry).catch((error) => console.warn(`${entry.id} could not be loaded.`, error))
     )
   );
 }
 
 function validEntry(entry) {
-  const ref = entry?.ref;
-  const whole = (n) => Number.isInteger(n) && n > 0;
-  return (
-    findTranslation(entry?.translation) &&
-    ref &&
-    Number.isInteger(ref.book) &&
-    whole(ref.startChapter) &&
-    whole(ref.endChapter) &&
-    (ref.startVerse === null || whole(ref.startVerse)) &&
-    (ref.endVerse === null || whole(ref.endVerse))
-  );
+  return Boolean(findTranslation(entry?.translation) && validRef(entry?.ref));
 }
 
 function buildPassageList() {
@@ -463,6 +519,8 @@ function buildTiles() {
   const slides = slidesOf(itemId) ?? [];
   el.songTitle.textContent = titleOf(itemId) ?? 'No songs yet';
   el.editSong.hidden = !songSlides.has(itemId);
+  el.addToService.hidden = !slides.length;
+  const entry = state.viewEntry;
   const notice = findTranslation(passages.get(itemId)?.translation)?.notice;
   el.passageNotice.textContent = notice ?? '';
   el.passageNotice.hidden = !notice;
@@ -492,7 +550,7 @@ function buildTiles() {
       screen.append(ref);
     }
     tile.addEventListener('click', (event) => {
-      showSlide(itemId, i);
+      showSlide(itemId, i, entry);
       // After a mouse click, let Space and Enter go back to meaning "next slide".
       if (event.detail > 0) tile.blur();
     });
@@ -511,27 +569,74 @@ function runAction(action) {
   }
 }
 
-// Next keeps going through the item on the TV. After its last slide, it
-// starts the item being viewed, if that's a different one.
-function next() {
-  const live = slidesOf(state.liveId);
-  if (!live || state.index < 0) return showSlide(state.viewId, 0);
-  if (state.index < live.length - 1) return showSlide(state.liveId, state.index + 1);
-  if (state.viewId !== state.liveId) return showSlide(state.viewId, 0);
-  showSlide(state.liveId, state.index);
+// Next keeps going through the item on the TV. After its last slide, it goes
+// on to whatever upNext() says.
+async function next() {
+  const live = liveSlide() ? slidesOf(state.liveId) : null;
+  if (live && state.index < live.length - 1) return showSlide(state.liveId, state.index + 1, state.liveEntry);
+  const target = upNext();
+  if (!target) return live && showSlide(state.liveId, state.index, state.liveEntry);
+  // A passage in the service may still be loading.
+  const following = liveSlide() && state.viewId === state.liveId;
+  if (!slidesOf(target.id) && !(await ensureLoaded(target.id, target.passage, service.showError))) return;
+  const hadFocus = document.activeElement?.classList.contains('tile');
+  showSlide(target.id, 0, target.entry);
+  // Someone following the TV keeps following it into the next item of the service.
+  if (following && target.entry && state.viewEntry !== target.entry) {
+    showItem(target.id, target.entry);
+    if (hadFocus) tiles[0]?.focus();
+  }
+}
+
+// Where Next goes after the last slide of the item on the TV: { id, entry, passage? } or null.
+//   - Nothing on the TV: the item being viewed.
+//   - Looking at something picked from the Songs or Bible tab: that, as before.
+//   - Otherwise the next item in the service, after the one it's at.
+//   - Otherwise the item being viewed, if it's a different one.
+function upNext() {
+  const viewed = { id: state.viewId, entry: state.viewEntry };
+  if (!liveSlide()) return slidesOf(state.viewId) ? viewed : null;
+  const viewingOther = state.viewId !== state.liveId;
+  if (viewingOther && !state.viewEntry && slidesOf(state.viewId)) return viewed;
+  const inService = nextInService();
+  if (inService) return inService;
+  if (viewingOther && slidesOf(state.viewId)) return viewed;
+  return null;
+}
+
+// The next item in the open service after the one it's at, skipping songs
+// that have gone. Null when the service isn't running or has ended.
+function nextInService() {
+  const items = service.current?.items ?? [];
+  if (!state.serviceAt) return null;
+  const at = state.serviceAt === 'start' ? -1 : items.findIndex((item) => item.key === state.serviceAt);
+  if (at < 0 && state.serviceAt !== 'start') return null;
+  for (const item of items.slice(at + 1)) {
+    const target = targetFor(item);
+    if (target) return target;
+  }
+  return null;
+}
+
+// Whether the service is running: something from it has been on the TV.
+function serviceRunning() {
+  return Boolean(service.current && state.serviceAt && liveSlide());
 }
 
 // Previous stays within the item on the TV.
 function previous() {
-  if (!slidesOf(state.liveId) || state.index < 0) return showSlide(state.viewId, 0);
-  showSlide(state.liveId, Math.max(state.index - 1, 0));
+  if (!liveSlide()) return showSlide(state.viewId, 0, state.viewEntry);
+  showSlide(state.liveId, Math.max(state.index - 1, 0), state.liveEntry);
 }
 
-function showSlide(itemId, i) {
+// entry is the service entry this came from, or null if it wasn't from the service.
+function showSlide(itemId, i, entry = null) {
   if (!slidesOf(itemId)?.[i]) return;
   state.liveId = itemId;
   state.index = i;
   state.cleared = false;
+  state.liveEntry = entry;
+  if (entry) state.serviceAt = entry;
   update();
 }
 
@@ -544,6 +649,7 @@ function update() {
   saveState();
   sendState();
   render();
+  service.render();
   backup.refreshReminder();
   // On small screens, keep the slide that's on the TV in view.
   if (state.liveId === state.viewId) {
@@ -593,10 +699,11 @@ function render() {
   });
 
   // Tabs. A tab that isn't open is marked when what's on the TV is in it.
-  const liveTab = liveSlide() ? tabOf(state.liveId) : null;
+  const liveTab = liveSlide() ? (state.liveEntry ? 'service' : tabOf(state.liveId)) : null;
   [
     [el.tabSongs, el.songsTab, 'songs'],
     [el.tabBible, el.bibleTab, 'bible'],
+    [el.tabService, el.serviceTab, 'service'],
   ].forEach(([tab, panel, name]) => {
     const open = state.tab === name;
     tab.setAttribute('aria-pressed', String(open));
@@ -613,8 +720,17 @@ function render() {
     const kind = tabOf(state.liveId) === 'bible' ? 'passage' : 'song';
     el.elsewhereText.textContent =
       `The TV is showing ${titleOf(state.liveId)}, ${slide.name}. ` +
-      `Next keeps going through that ${kind}, then starts this one.`;
+      `Next keeps going through that ${kind}, ${afterThat()}`;
     el.goLiveSong.textContent = `Go to that ${kind}`;
+  }
+
+  // While a service is running, say what comes after the item on the TV.
+  el.serviceNext.hidden = !serviceRunning();
+  if (serviceRunning()) {
+    const coming = nextInService();
+    el.serviceNext.textContent = coming
+      ? `Next in the service: ${targetTitle(coming)}`
+      : 'That’s the end of the service.';
   }
 
   el.status.textContent = displayOpen ? 'TV window is open' : 'TV window is closed';
@@ -625,6 +741,22 @@ function render() {
   el.black.setAttribute('aria-pressed', String(state.black));
   el.liveNote.classList.toggle('is-warning', state.black);
   el.liveNote.textContent = liveNote();
+}
+
+// The end of "Next keeps going through that song, …".
+function afterThat() {
+  const target = upNext();
+  if (!target) return 'then stops.';
+  if (target.id === state.viewId && target.entry === state.viewEntry) return 'then starts this one.';
+  return `then goes on to ${targetTitle(target)}, next in the service.`;
+}
+
+// "Rock of Ages", or "John 3:16–18 (KJV)" even before the passage has loaded.
+function targetTitle(target) {
+  const title = titleOf(target.id);
+  if (title || !target.item) return title ?? '';
+  const { label, detail } = describeItem(target.item);
+  return detail ? `${label} (${detail})` : label;
 }
 
 function liveNote() {
@@ -638,6 +770,79 @@ function liveNote() {
 
 function liveSlide() {
   return slidesOf(state.liveId)?.[state.index] ?? null;
+}
+
+// Services
+
+// What a service item is in this library: { id, entry, item, passage? }, or
+// null if it can't be shown (the song was deleted, or the translation has gone).
+function targetFor(item) {
+  if (item.type === 'song') {
+    return songSlides.has(item.songId) ? { id: item.songId, entry: item.key, item } : null;
+  }
+  if (!validEntry(item)) return null;
+  const passage = { translation: item.translation, ref: item.ref };
+  return { id: passageId(item.translation, item.ref), entry: item.key, item, passage };
+}
+
+// How a service item is shown in the list.
+function describeItem(item) {
+  if (item.type === 'song') {
+    const song = songs.find((s) => s.id === item.songId);
+    if (song) return { label: song.title, detail: '', missing: '' };
+    return {
+      label: item.title || 'A song',
+      detail: '',
+      missing: 'This song isn’t in your songs any more. It will be skipped.',
+    };
+  }
+  const translation = findTranslation(item.translation);
+  const label = formatReference(item.ref);
+  if (!translation) {
+    return { label, detail: item.translation.toUpperCase(), missing: 'That translation isn’t available here. It will be skipped.' };
+  }
+  return { label, detail: translation.short, missing: '' };
+}
+
+function addToService() {
+  const song = songs.find((s) => s.id === state.viewId);
+  const passage = passages.get(state.viewId);
+  const item = song ? songItem(song) : passage ? passageItem(passage.translation, passage.ref) : null;
+  if (!item) return;
+  const changed = service.add(item);
+  el.addedNote.textContent = `Added to ${changed.name}. It has ${changed.items.length === 1 ? '1 item' : `${changed.items.length} items`}.`;
+  el.addedNote.hidden = false;
+}
+
+// The open service, or which service is open, changed. Forget entries that
+// aren't in it any more; the TV itself never changes here.
+function serviceChanged() {
+  const keys = new Set((service.current?.items ?? []).map((item) => item.key));
+  if (state.liveEntry && !keys.has(state.liveEntry)) state.liveEntry = null;
+  if (state.viewEntry && !keys.has(state.viewEntry)) state.viewEntry = null;
+  if (state.serviceAt && state.serviceAt !== 'start' && !keys.has(state.serviceAt)) state.serviceAt = null;
+  if (state.serviceAt === 'start' && !service.current) state.serviceAt = null;
+  saveState();
+  render();
+  service.render();
+  preloadService();
+}
+
+// Load the words of the open service's passages in the background, so Next is
+// instant. Each Bible file is only fetched once.
+function preloadService() {
+  (service.current?.items ?? []).forEach((item) => {
+    const target = item.type === 'passage' ? targetFor(item) : null;
+    if (target && !slidesOf(target.id)) {
+      loadPassage({ ...target.passage, id: target.id }).then(
+        () => {
+          service.render();
+          render();
+        },
+        (error) => console.warn(`${target.id} could not be loaded.`, error)
+      );
+    }
+  });
 }
 
 function slidesOf(id) {
@@ -666,8 +871,16 @@ function checkState() {
     state.index = -1;
     state.cleared = false;
   }
-  if (!slidesOf(state.viewId)) state.viewId = state.liveId ?? songs[0]?.id ?? null;
-  if (state.tab !== 'bible') state.tab = 'songs';
+  if (!slidesOf(state.viewId)) {
+    state.viewId = state.liveId ?? songs[0]?.id ?? null;
+    state.viewEntry = state.viewId === state.liveId ? state.liveEntry : null;
+  }
+  if (!['bible', 'service'].includes(state.tab)) state.tab = 'songs';
+  const keys = new Set((service.current?.items ?? []).map((item) => item.key));
+  const known = (key) => typeof key === 'string' && keys.has(key);
+  if (!known(state.liveEntry) || !state.liveId) state.liveEntry = null;
+  if (!known(state.viewEntry)) state.viewEntry = null;
+  if (!(known(state.serviceAt) || (state.serviceAt === 'start' && keys.size))) state.serviceAt = null;
   state.black = state.black === true;
   saveState();
 }

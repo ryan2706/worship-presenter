@@ -2,8 +2,18 @@
 // Files are only ever saved when the volunteer presses a button; nothing
 // leaves this device otherwise.
 
-import { FileProblem, countChanges, fileName, makeFile, planRestore, readFile, recordsFor } from './backup-file.js';
-import { addSongs, listRecords, needsBackup, slidesFor } from './library.js';
+import {
+  FileProblem,
+  countChanges,
+  fileName,
+  makeFile,
+  planRestore,
+  readFile,
+  recordsFor,
+  servicesFor,
+} from './backup-file.js';
+import { addServices, addSongs, listRecords, needsBackup, slidesFor } from './library.js';
+import { songIdsIn } from './service.js';
 
 // When songs last changed without a backup, and when the reminder was put away.
 const REMINDER_KEY = 'worship-presenter:backup';
@@ -11,7 +21,7 @@ const REMIND_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 const CANT_READ = 'This browser isn’t letting us read your songs (it may be a private window).';
 const CANT_SAVE = 'This browser isn’t letting us save songs (it may be a private window). Nothing was changed.';
 
-export function createBackup({ onOpen, onClose, getSongs, onImported, isTvInUse = () => false }) {
+export function createBackup({ onOpen, onClose, getSongs, getServices = () => [], onImported, isTvInUse = () => false }) {
   const el = {
     backup: document.getElementById('backup'),
     restore: document.getElementById('restore'),
@@ -36,12 +46,17 @@ export function createBackup({ onOpen, onClose, getSongs, onImported, isTvInUse 
     existingText: document.getElementById('restore-existing-text'),
     allChoices: document.getElementById('restore-all'),
     conflicts: document.getElementById('restore-conflicts'),
+    services: document.getElementById('restore-services'),
+    servicesText: document.getElementById('restore-services-text'),
+    servicesList: document.getElementById('restore-services-list'),
     extra: document.getElementById('restore-extra'),
     restoreError: document.getElementById('restore-error'),
     restoreGo: document.getElementById('restore-go'),
     restoreCancel: document.getElementById('restore-cancel'),
     shareView: document.getElementById('share-view'),
     shareList: document.getElementById('share-list'),
+    shareServices: document.getElementById('share-services'),
+    shareServiceList: document.getElementById('share-service-list'),
     shareAll: document.getElementById('share-all'),
     shareNone: document.getElementById('share-none'),
     shareGo: document.getElementById('share-go'),
@@ -79,6 +94,18 @@ export function createBackup({ onOpen, onClose, getSongs, onImported, isTvInUse 
   el.shareAll.addEventListener('click', () => tickAll(true));
   el.shareNone.addEventListener('click', () => tickAll(false));
   el.shareList.addEventListener('change', renderShareCount);
+  // Ticking a service ticks the songs in it.
+  el.shareServiceList.addEventListener('change', (event) => {
+    const box = event.target.closest('input');
+    if (box?.checked) {
+      const service = getServices().find((s) => s.id === box.value);
+      const ids = new Set(service ? songIdsIn(service) : []);
+      el.shareList.querySelectorAll('input').forEach((songBox) => {
+        if (ids.has(songBox.value)) songBox.checked = true;
+      });
+    }
+    renderShareCount();
+  });
   el.shareGo.addEventListener('click', share);
   el.shareCancel.addEventListener('click', close);
 
@@ -113,15 +140,19 @@ export function createBackup({ onOpen, onClose, getSongs, onImported, isTvInUse 
       console.warn('The songs could not be read for a backup.', error);
       return showNote(CANT_READ);
     }
+    const services = getServices();
     const name = fileName('backup');
-    saveFile(name, makeFile('backup', records));
+    saveFile(name, makeFile('backup', records, new Date(), services));
     saveReminder({ backedUpAt: Date.now() });
     renderReminder();
     askToKeepSongs();
     const count = records.filter((record) => !record.deleted).length;
+    const parts = [];
+    if (count) parts.push(`${plural(count, 'song')} you added or changed`);
+    if (services.length) parts.push(plural(services.length, 'service'));
     showNote(
       `Backup saved as ${name}` +
-        (count ? ` with ${plural(count, 'song')} you added or changed. ` : '. ') +
+        (parts.length ? ` with ${parts.join(' and ')}. ` : '. ') +
         'Keep it somewhere safe, such as your email or cloud storage.'
     );
   }
@@ -140,7 +171,7 @@ export function createBackup({ onOpen, onClose, getSongs, onImported, isTvInUse 
     el.restoreError.hidden = true;
     try {
       const contents = readFile(await file.text(), file.size);
-      plan = planRestore(contents, await listRecords());
+      plan = planRestore(contents, await listRecords(), getServices());
     } catch (error) {
       if (!(error instanceof FileProblem)) console.warn('The file could not be restored.', error);
       showProblem(error instanceof FileProblem ? error.message : CANT_READ);
@@ -201,6 +232,12 @@ export function createBackup({ onOpen, onClose, getSongs, onImported, isTvInUse 
     );
     renderChoices();
 
+    const services = [...plan.services.added, ...plan.services.copies];
+    const sameServices = plan.services.same.length;
+    el.services.hidden = !services.length && !sameServices;
+    el.servicesList.replaceChildren(...services.map((service) => listItem(service.name)));
+    el.servicesText.textContent = servicesText(plan.services.added.length, plan.services.copies.length, sameServices);
+
     const extra = [];
     if (plan.hides.length) {
       extra.push(
@@ -211,9 +248,30 @@ export function createBackup({ onOpen, onClose, getSongs, onImported, isTvInUse 
     if (plan.skipped) {
       extra.push(`${plural(plan.skipped, 'song')} in the file couldn’t be read, so ${plan.skipped === 1 ? 'it' : 'they'} will be skipped.`);
     }
+    if (plan.skippedServices) {
+      extra.push(
+        `${plural(plan.skippedServices, 'service')} in the file couldn’t be read, so ` +
+          `${plan.skippedServices === 1 ? 'it' : 'they'} will be skipped.`
+      );
+    }
     el.extra.textContent = extra.join(' ');
     el.extra.hidden = !extra.length;
     el.restoreGo.textContent = shared ? 'Add songs' : 'Restore songs';
+  }
+
+  function servicesText(added, copies, same) {
+    const parts = [];
+    const total = added + copies;
+    if (total) parts.push(`${capital(plural(total, 'service'))} will be added. Open ${total === 1 ? 'it' : 'them'} from the Service tab.`);
+    if (copies) {
+      parts.push(
+        copies === 1
+          ? 'You already have a different version of one, so it’s added as a copy and yours isn’t changed.'
+          : `You already have different versions of ${copies}, so they’re added as copies and yours aren’t changed.`
+      );
+    }
+    if (same) parts.push(`${capital(plural(same, 'service is', 'services are'))} the same as yours and will be left alone.`);
+    return parts.join(' ');
   }
 
   function existingText() {
@@ -257,10 +315,12 @@ export function createBackup({ onOpen, onClose, getSongs, onImported, isTvInUse 
     el.restoreError.hidden = true;
     const changes = countChanges(plan);
     const records = recordsFor(plan);
-    if (records.length) {
+    const services = servicesFor(plan);
+    if (records.length || services.length) {
       setBusy([el.restoreGo, el.restoreCancel], true);
       try {
-        await addSongs(records);
+        if (records.length) await addSongs(records);
+        await addServices(services);
         noteChange();
         await onImported();
       } catch (error) {
@@ -276,9 +336,12 @@ export function createBackup({ onOpen, onClose, getSongs, onImported, isTvInUse 
     showNote(doneText(changes));
   }
 
-  function doneText({ added, replaced, hidden }) {
+  function doneText({ added, replaced, hidden, services }) {
     const parts = [];
-    if (added) parts.push(`added ${plural(added, 'song')}`);
+    const adds = [];
+    if (added) adds.push(plural(added, 'song'));
+    if (services) adds.push(plural(services, 'service'));
+    if (adds.length) parts.push(`added ${adds.join(' and ')}`);
     if (replaced) parts.push(`replaced ${plural(replaced, 'song')}`);
     if (hidden) parts.push(`hid ${plural(hidden, 'deleted sample song')}`);
     if (!parts.length) return 'Nothing needed to change. You already have these songs.';
@@ -292,6 +355,21 @@ export function createBackup({ onOpen, onClose, getSongs, onImported, isTvInUse 
     el.heading.textContent = 'Share songs';
     el.restoreView.hidden = true;
     el.shareView.hidden = false;
+    const services = getServices();
+    el.shareServices.hidden = !services.length;
+    el.shareServiceList.replaceChildren(
+      ...services.map((service) => {
+        const item = document.createElement('li');
+        item.innerHTML = `
+          <label class="share-song">
+            <input type="checkbox">
+            <span></span>
+          </label>`;
+        item.querySelector('input').value = service.id;
+        item.querySelector('span').textContent = service.name;
+        return item;
+      })
+    );
     el.shareList.replaceChildren(
       ...getSongs().map((song) => {
         const item = document.createElement('li');
@@ -311,29 +389,45 @@ export function createBackup({ onOpen, onClose, getSongs, onImported, isTvInUse 
 
   function tickAll(ticked) {
     el.shareList.querySelectorAll('input').forEach((box) => (box.checked = ticked));
+    if (!ticked) el.shareServiceList.querySelectorAll('input').forEach((box) => (box.checked = false));
     renderShareCount();
   }
 
-  function tickedIds() {
-    return [...el.shareList.querySelectorAll('input:checked')].map((box) => box.value);
+  function tickedIds(list = el.shareList) {
+    return [...list.querySelectorAll('input:checked')].map((box) => box.value);
+  }
+
+  function tickedServices() {
+    const ids = new Set(tickedIds(el.shareServiceList));
+    return getServices().filter((service) => ids.has(service.id));
+  }
+
+  // "3 songs and 1 service"
+  function whatsTicked(songs, services) {
+    const parts = [];
+    if (songs) parts.push(plural(songs, 'song'));
+    if (services) parts.push(plural(services, 'service'));
+    return parts.join(' and ');
   }
 
   function renderShareCount() {
     const count = tickedIds().length;
-    el.shareGo.disabled = count === 0;
-    el.shareGo.textContent = count ? `Save ${plural(count, 'song')} to a file` : 'Tick the songs to share';
+    const services = tickedServices().length;
+    el.shareGo.disabled = count + services === 0;
+    el.shareGo.textContent = count + services ? `Save ${whatsTicked(count, services)} to a file` : 'Tick the songs to share';
   }
 
   function share() {
     const ids = new Set(tickedIds());
     const songs = getSongs().filter((song) => ids.has(song.id));
-    if (!songs.length) return;
+    const services = tickedServices();
+    if (!songs.length && !services.length) return;
     const name = fileName('shared');
-    saveFile(name, makeFile('shared', songs));
+    saveFile(name, makeFile('shared', songs, new Date(), services));
     close();
     showNote(
-      `Saved ${plural(songs.length, 'song')} as ${name}. Send this file to the other group. ` +
-        'They add the songs by pressing Restore from backup.'
+      `Saved ${whatsTicked(songs.length, services.length)} as ${name}. Send this file to the other group. ` +
+        `They add ${services.length ? 'them' : 'the songs'} by pressing Restore from backup.`
     );
   }
 
@@ -352,6 +446,7 @@ export function createBackup({ onOpen, onClose, getSongs, onImported, isTvInUse 
     plan = null;
     el.conflicts.replaceChildren();
     el.shareList.replaceChildren();
+    el.shareServiceList.replaceChildren();
     onClose?.();
     if (returnTo?.isConnected && !returnTo.closest('[hidden]')) returnTo.focus({ preventScroll: true });
     returnTo = null;

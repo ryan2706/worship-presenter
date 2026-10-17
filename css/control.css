@@ -325,7 +325,7 @@ ol {
 
 .tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 0.5rem;
   margin-bottom: 1rem;
 }
@@ -1097,6 +1097,282 @@ textarea {
   cursor: default;
 }
 
+/* The Service tab: tonight's order of songs and passages. */
+
+.service-head {
+  margin-bottom: 0.5rem;
+}
+
+.service-name {
+  font-size: 1.3rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.service-date {
+  color: var(--mist);
+  font-size: 0.95rem;
+}
+
+.service-actions,
+.service-form-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.service-actions[hidden],
+.service-form[hidden] {
+  display: none;
+}
+
+.service-form {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background: var(--dusk);
+}
+
+.service-form .panel-title {
+  margin-bottom: 0;
+}
+
+.service-form-buttons {
+  margin-bottom: 0;
+}
+
+input[type="date"] {
+  min-height: 3rem;
+  padding: 0.5rem 0.85rem;
+  border: 2px solid var(--dusk-edge);
+  border-radius: 0.6rem;
+  background: var(--evening);
+  color: var(--paper);
+  font: inherit;
+}
+
+input[type="date"]:focus-visible {
+  outline: 3px solid var(--paper);
+  outline-offset: 2px;
+}
+
+#service-confirm {
+  margin-bottom: 1rem;
+}
+
+#service-error {
+  margin-bottom: 1rem;
+}
+
+.service-items {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.service-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.35rem 0.4rem;
+  padding: 0.5rem 0.6rem 0.6rem 0.35rem;
+  border: 2px solid var(--dusk-edge);
+  border-radius: 0.75rem;
+}
+
+.service-item.is-dragging {
+  opacity: 0.5;
+}
+
+/* Where a dragged item will land. */
+.service-item.is-drop {
+  border-color: var(--paper);
+  border-style: dashed;
+}
+
+.service-grip {
+  grid-row: span 3;
+  align-self: center;
+  padding: 0 0.15rem;
+  color: var(--mist);
+  font-size: 1.3rem;
+  cursor: grab;
+  user-select: none;
+}
+
+.service-open {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.35rem 0.5rem;
+  border: 2px solid transparent;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--mist);
+  font: 700 1.05rem/1.25 var(--font);
+  text-align: left;
+  cursor: pointer;
+}
+
+.service-open:hover:not(:disabled) {
+  color: var(--paper);
+}
+
+.service-open:focus-visible {
+  outline: 3px solid var(--paper);
+  outline-offset: 2px;
+}
+
+.service-open[aria-current="true"] {
+  border-color: var(--paper);
+  background: var(--dusk);
+  color: var(--paper);
+}
+
+.service-open:disabled {
+  cursor: default;
+  text-decoration: line-through;
+}
+
+.service-number {
+  min-width: 1.4rem;
+  color: var(--mist);
+}
+
+.service-label {
+  flex: 1 1 8rem;
+}
+
+.service-mark {
+  padding: 0.05rem 0.6rem;
+  border-radius: 999px;
+  border: 2px solid var(--mist);
+  color: var(--paper);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.service-mark[hidden] {
+  display: none;
+}
+
+.service-item.is-live .service-mark {
+  border-color: var(--candle);
+  background: var(--candle);
+  color: var(--black);
+}
+
+.service-missing {
+  padding: 0 0.5rem;
+  color: var(--paper);
+  font-size: 0.95rem;
+}
+
+.service-missing[hidden] {
+  display: none;
+}
+
+.service-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding-left: 0.5rem;
+}
+
+.service-buttons .btn {
+  min-height: 2.5rem;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.95rem;
+}
+
+.other-services-title {
+  margin-top: 1.5rem;
+}
+
+.other-services {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.other-services[hidden],
+.other-services-title[hidden] {
+  display: none;
+}
+
+.other-service {
+  display: grid;
+  width: 100%;
+  min-height: 3.25rem;
+  padding: 0.5rem 1rem;
+  border: 2px solid var(--dusk-edge);
+  border-radius: 0.75rem;
+  background: transparent;
+  color: var(--mist);
+  font: 700 1rem/1.3 var(--font);
+  text-align: left;
+  cursor: pointer;
+}
+
+.other-service:hover {
+  border-color: var(--mist);
+  color: var(--paper);
+}
+
+.other-service:focus-visible {
+  outline: 3px solid var(--paper);
+  outline-offset: 3px;
+}
+
+.song-head-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.added-note {
+  margin: -0.5rem 0 1rem;
+  color: var(--mist);
+  font-size: 0.95rem;
+}
+
+/* Phones and tablets: no dragging, so no grip. Up and Down do the moving. */
+@media (pointer: coarse) {
+  .service-item {
+    grid-template-columns: minmax(0, 1fr);
+    padding-left: 0.6rem;
+  }
+
+  .service-grip {
+    display: none;
+  }
+
+  .service-item {
+    cursor: auto;
+  }
+}
+
+@media (max-width: 40rem) {
+  .service-buttons .btn {
+    flex: 1 1 auto;
+    min-height: 2.75rem;
+  }
+
+  .tab {
+    padding: 0.5rem 0.4rem;
+    font-size: 1.05rem;
+  }
+}
+
 /* Bottom bar stays in reach on long pages and on phones. */
 
 .bar {
@@ -1111,9 +1387,19 @@ textarea {
   background: var(--evening);
 }
 
-.live-note {
+.bar-notes {
   flex: 1 1 16rem;
+}
+
+.live-note {
   color: var(--mist);
+}
+
+/* What Next will put on the TV after this item, while a service is running. */
+.service-next {
+  margin-top: 0.15rem;
+  color: var(--paper);
+  font-weight: 700;
 }
 
 .live-note.is-warning {
@@ -1185,8 +1471,12 @@ textarea {
     padding-top: 0.75rem;
   }
 
-  .live-note {
+  .bar-notes {
     flex-basis: 100%;
+  }
+
+  .live-note,
+  .service-next {
     font-size: 0.95rem;
   }
 

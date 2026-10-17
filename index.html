@@ -60,6 +60,10 @@
           <span class="tab-name">Bible</span>
           <span class="tab-live">On the TV</span>
         </button>
+        <button id="tab-service" class="tab" type="button" aria-pressed="false" aria-controls="service-tab">
+          <span class="tab-name">Service</span>
+          <span class="tab-live">On the TV</span>
+        </button>
       </div>
 
       <div id="songs-tab" class="tab-panel">
@@ -114,13 +118,59 @@
         <ul id="passages" class="songs passages"></ul>
         <p id="no-passages" class="no-match">Passages you show will be listed here.</p>
       </div>
+
+      <div id="service-tab" class="tab-panel" hidden>
+        <h2 id="service-tab-title" class="visually-hidden">Service</h2>
+        <div id="service-head" class="service-head" hidden>
+          <p id="service-name" class="service-name"></p>
+          <p id="service-date" class="service-date"></p>
+        </div>
+        <div id="service-actions" class="service-actions" hidden>
+          <button id="service-rename" class="btn btn-small" type="button">Rename</button>
+          <button id="service-duplicate" class="btn btn-small" type="button">Duplicate</button>
+          <button id="service-delete" class="btn btn-small" type="button">Delete</button>
+        </div>
+        <form id="service-form" class="service-form" novalidate hidden>
+          <h3 id="service-form-title" class="panel-title">New service</h3>
+          <div class="field">
+            <label for="service-name-input" class="field-label">Name</label>
+            <input id="service-name-input" type="text" autocomplete="off" aria-describedby="service-name-error">
+            <p id="service-name-error" class="field-error" hidden></p>
+          </div>
+          <div class="field">
+            <label for="service-date-input" class="field-label">Date</label>
+            <input id="service-date-input" type="date">
+          </div>
+          <div class="service-form-buttons">
+            <button id="service-form-save" class="btn btn-primary btn-small" type="submit">Save service</button>
+            <button id="service-form-cancel" class="btn btn-small" type="button">Cancel</button>
+          </div>
+        </form>
+        <div id="service-confirm" class="confirm" hidden>
+          <p id="service-confirm-text"></p>
+          <div class="confirm-buttons">
+            <button id="service-confirm-yes" class="btn btn-primary btn-small" type="button">Yes, delete it</button>
+            <button id="service-confirm-no" class="btn btn-small" type="button">No, keep it</button>
+          </div>
+        </div>
+        <p id="service-error" class="alert" role="alert" hidden></p>
+        <ol id="service-items" class="service-items" aria-label="Items in this service"></ol>
+        <p id="service-empty" class="no-match"></p>
+        <button id="new-service" class="btn btn-small" type="button">+ New service</button>
+        <h3 id="other-services-title" class="panel-title other-services-title" hidden>Other services</h3>
+        <ul id="other-services" class="other-services" hidden></ul>
+      </div>
     </section>
 
     <section class="slides-panel" aria-labelledby="song-title">
       <div class="song-head">
         <h2 id="song-title" class="song-title">Loading songs…</h2>
-        <button id="edit-song" class="btn btn-small" type="button" hidden>Edit song</button>
+        <div class="song-head-buttons">
+          <button id="add-to-service" class="btn btn-small" type="button" hidden>+ Add to service</button>
+          <button id="edit-song" class="btn btn-small" type="button" hidden>Edit song</button>
+        </div>
       </div>
+      <p id="added-note" class="added-note" role="status" hidden></p>
       <p id="passage-notice" class="passage-notice" hidden></p>
       <div id="elsewhere" class="elsewhere" hidden>
         <p id="elsewhere-text"></p>
@@ -213,6 +263,12 @@
           <ul id="restore-conflicts" class="conflicts"></ul>
         </div>
 
+        <div id="restore-services" hidden>
+          <h3 class="panel-title">Services</h3>
+          <p id="restore-services-text"></p>
+          <ul id="restore-services-list" class="restore-list"></ul>
+        </div>
+
         <p id="restore-extra" hidden></p>
         <p class="field-help">Songs on this device that aren’t in the file won’t be changed or removed.</p>
         <p id="restore-error" class="alert" role="alert" hidden></p>
@@ -229,6 +285,12 @@
         Tick the songs you want to share. They are saved together in one file.
         Send it to the other group, and they add the songs by pressing <strong>Restore from backup</strong>.
       </p>
+      <div id="share-services" class="share-services" hidden>
+        <h3 class="panel-title">Services</h3>
+        <p class="field-help">Ticking a service ticks its songs too, so the other group can run the same meeting.</p>
+        <ul id="share-service-list" class="share-list"></ul>
+        <h3 class="panel-title">Songs</h3>
+      </div>
       <div class="share-tick-all">
         <button id="share-all" class="link-button" type="button">Tick all</button>
         <button id="share-none" class="link-button" type="button">Untick all</button>
@@ -242,7 +304,10 @@
   </section>
 
   <footer class="bar">
-    <p id="live-note" class="live-note" role="status">Nothing is on the TV yet. Pick a slide.</p>
+    <div class="bar-notes">
+      <p id="live-note" class="live-note" role="status">Nothing is on the TV yet. Pick a slide.</p>
+      <p id="service-next" class="service-next" hidden></p>
+    </div>
     <div class="bar-buttons">
       <button id="previous" class="btn" type="button"><span aria-hidden="true">◀</span> Previous</button>
       <button id="next" class="btn" type="button">Next <span aria-hidden="true">▶</span></button>

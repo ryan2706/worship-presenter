@@ -1,7 +1,8 @@
 // The song library, kept in the browser with IndexedDB.
 // This is the only file that talks to IndexedDB.
 //
-// Database "worship-presenter", store "songs" (keyed by song id).
+// Database "worship-presenter", store "songs" (keyed by song id) and store
+// "services" (keyed by service id; see service.js).
 //
 // A song whose id is in SAMPLE_SONGS is a sample. Every time the library is
 // read, the samples are brought up to date with the ones in sample-songs.js:
@@ -13,8 +14,9 @@
 import { SAMPLE_SONGS } from './sample-songs.js';
 
 const DB_NAME = 'worship-presenter';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const SONGS = 'songs';
+const SERVICES = 'services';
 
 const SAMPLES = new Map(SAMPLE_SONGS.map((song) => [song.id, song]));
 
@@ -23,8 +25,10 @@ let dbPromise = null;
 export function openLibrary() {
   dbPromise ??= new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      request.result.createObjectStore(SONGS, { keyPath: 'id' });
+    request.onupgradeneeded = (event) => {
+      // Version 1 had songs only. Version 2 adds services.
+      if (event.oldVersion < 1) request.result.createObjectStore(SONGS, { keyPath: 'id' });
+      if (event.oldVersion < 2) request.result.createObjectStore(SERVICES, { keyPath: 'id' });
     };
     request.onsuccess = () => {
       const db = request.result;
@@ -151,6 +155,29 @@ export function sameWords(a, b) {
   return a.title === b.title && same(slidesFor(a), slidesFor(b));
 }
 
+// Services: saved orders of songs and passages. Only references are stored.
+
+export async function listServices() {
+  const db = await openLibrary();
+  return result(db.transaction(SERVICES).objectStore(SERVICES).getAll());
+}
+
+export async function saveService(service) {
+  const record = structuredClone(service);
+  await write((store) => store.put(record), SERVICES);
+  return record;
+}
+
+// Adds or replaces several services at once, from a backup or a shared file.
+export async function addServices(records) {
+  if (!records.length) return;
+  await write((store) => records.forEach((record) => store.put(structuredClone(record))), SERVICES);
+}
+
+export async function deleteService(id) {
+  await write((store) => store.delete(id), SERVICES);
+}
+
 // Helpers
 
 function prepare(song) {
@@ -167,10 +194,10 @@ async function deletedSampleIds() {
   return records.filter((record) => record.deleted && SAMPLES.has(record.id)).map((record) => record.id);
 }
 
-async function write(change) {
+async function write(change, storeName = SONGS) {
   const db = await openLibrary();
-  const tx = db.transaction(SONGS, 'readwrite');
-  change(tx.objectStore(SONGS));
+  const tx = db.transaction(storeName, 'readwrite');
+  change(tx.objectStore(storeName));
   await finished(tx);
 }
 
