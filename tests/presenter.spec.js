@@ -5,6 +5,7 @@
 // Phase 4: backing up, restoring and sharing songs, and the backup reminder.
 // Phase 5: the phone layout and reminder fixes, and Bible verses.
 // Phase 6: the service order.
+// Phase 7: GitHub Pages: working from a subfolder, the About page and the 404 page.
 //
 // Every test gets a fresh browser profile, so storage starts empty and the
 // sample songs are added on first load.
@@ -2170,5 +2171,74 @@ test.describe('Phase 6: service order', () => {
       for (const id of ['#previous', '#next', '#black', '#clear']) await expect(page.locator(id)).toBeInViewport();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     });
+  });
+});
+
+test.describe('Phase 7: GitHub Pages', () => {
+  // GitHub Pages serves the app from /worship-presenter/. Serve it the same way,
+  // and refuse anything outside that folder, so an address starting with "/"
+  // shows up as a failure.
+  async function serveFromSubfolder(context) {
+    const missed = [];
+    await context.route('http://localhost:8123/**', async (route) => {
+      const url = new URL(route.request().url());
+      const prefix = '/worship-presenter/';
+      if (!url.pathname.startsWith(prefix)) {
+        missed.push(url.pathname);
+        return route.fulfill({ status: 404, body: 'Not in the subfolder' });
+      }
+      url.pathname = '/' + url.pathname.slice(prefix.length);
+      return route.fulfill({ response: await route.fetch({ url: url.href }) });
+    });
+    return missed;
+  }
+
+  test('the Control and TV windows and the Bible work from a subfolder', async ({ page, context }) => {
+    const missed = await serveFromSubfolder(context);
+    await page.goto('/worship-presenter/');
+    await expect(page.locator('.song')).toHaveCount(8);
+    const tv = await openDisplay(page);
+    expect(new URL(tv.url()).pathname).toBe('/worship-presenter/display.html');
+
+    await tile(page, 0).click();
+    await expect(tvText(tv)).toHaveText(/^Amazing grace! How sweet the sound/);
+
+    await page.locator('#tab-bible').click();
+    await page.locator('#bible-ref').fill('John 3:16');
+    await page.locator('#bible-ref').press('Enter');
+    await expect(page.locator('#song-title')).toHaveText('John 3:16 (KJV)');
+    await tile(page, 0).click();
+    await expect(tvText(tv)).toHaveText(/^For God so loved the world/);
+    await expect(tv.locator('#caption')).toHaveText('John 3:16 · KJV');
+    expect(missed).toEqual([]);
+  });
+
+  test('the About page opens from the Control page and leads back', async ({ page, context }) => {
+    const missed = await serveFromSubfolder(context);
+    await page.goto('/worship-presenter/');
+    await page.getByRole('link', { name: 'About' }).click();
+    await expect(page).toHaveURL('/worship-presenter/about.html');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('About Worship Presenter');
+    await expect(page.getByText('saved only in this web browser, on this device')).toBeVisible();
+    await expect(page.getByText(/King James Version \(KJV\)/)).toBeVisible();
+    await expect(page.getByText(/World English Bible \(WEB\)/)).toBeVisible();
+    await expect(page.getByText('public domain').first()).toBeVisible();
+    await page.getByRole('link', { name: 'Back to Worship Presenter' }).click();
+    await expect(page).toHaveURL('/worship-presenter/');
+    await expect(page.locator('.song')).toHaveCount(8);
+    expect(missed).toEqual([]);
+  });
+
+  test('the page-not-found page explains itself and links home', async ({ page }) => {
+    await page.goto('/404.html');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('This page isn’t here');
+    await page.getByRole('link', { name: 'Go to Worship Presenter' }).click();
+    await expect(page.locator('.song')).toHaveCount(8);
+  });
+
+  test('the About page fits on a phone', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/about.html');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 });

@@ -122,6 +122,27 @@ ol {
   padding: 1.25rem var(--gutter);
 }
 
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.about-link {
+  color: var(--mist);
+  font-weight: 700;
+  text-underline-offset: 0.2em;
+}
+
+.about-link:hover {
+  color: var(--paper);
+}
+
+.about-link:focus-visible {
+  outline: 3px solid var(--paper);
+  outline-offset: 3px;
+}
+
 .top h1 {
   font-size: 1.5rem;
   line-height: 1.2;

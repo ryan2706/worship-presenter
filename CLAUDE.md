@@ -44,8 +44,13 @@ Volunteers who are not technical.
 - `js/bible-panel.js`: the Bible tab's form (reference, translation, two verses per slide).
 - `js/service.js`: what a service is: making, changing, checking and comparing services. No page code.
 - `js/service-panel.js`: the Service tab (the items, moving and removing them, and saving several services).
+- `about.html`, `css/about.css`: the About page (what the app is, that data stays on the device, and the Bible sources and licences). Linked from the Control window's header.
+- `404.html`: GitHub Pages' "page not found" page. Its styles are inline, because it is shown at any depth.
+- `.nojekyll`: tells GitHub Pages to serve the files as they are.
 - `data/kjv.json`, `data/web.json`: the Bible text. See `data/README.md` for sources and licences.
 - `tools/make-bible-data.py`: remakes the Bible files from eBible.org. Run by hand; it is not a build step.
+
+It is live at https://ryan2706.github.io/worship-presenter/, published by GitHub Pages from the root of the `main` branch. Every address in the site is relative (no leading `/`), so it works in that subfolder. Pushing to `main` updates the live site.
 
 To try it locally, run `python3 -m http.server 8000` in the project folder and open http://localhost:8000. ES modules don't load from `file://`.
 
@@ -204,3 +209,4 @@ Add one line per decision, newest at the bottom, with the date.
 - 2026-10-17: Bible text: KJV (1769) and WEB Updated (`engwebu`, "the LORD"), both public domain, converted once from eBible.org's USFM by `tools/make-bible-data.py` into `data/kjv.json` and `data/web.json`. USFM is used because it marks Psalm titles separately, so they never join verse 1. Footnotes, headings, Psalm titles and the Apocrypha are left out; verse words are kept exactly.
 - 2026-10-17: Bible tab added. Passages are items like songs (same Next, Black screen, reload and "On the TV" rules). One verse per slide by default, with an option for two short verses. Verses over 200 characters are split across slides. The TV shows the reference and translation small at the bottom (`caption` in the state message). Translations are listed only in `js/bibles.js`, and only references are saved, so ESV can be added later as one more entry.
 - 2026-10-17: Service order added: a third tab with saved services (name and date), built with Add to service, reordered by dragging or Up/Down, and run with Next from one item to the next. Services are stored in IndexedDB (database version 2, store `services`) as references only. A song opened from the Songs or Bible tab still plays next, then the service carries on. Moving or removing items while the service runs never changes the TV. Backups include every service, and Share can include services with their songs; restored services are relinked to the songs on this device, and a different service with the same id is added as a copy.
+- 2026-10-17: Published on GitHub Pages at /worship-presenter/ from the `main` branch root. All addresses are relative, checked by a test that serves the app from a subfolder. Added an About page and a 404 page.

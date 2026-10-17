@@ -1,0 +1,96 @@
+/* The About page and the "page not found" page. */
+
+:root {
+  --evening: #1d2a3a;
+  --dusk: #2b3b4f;
+  --dusk-edge: #3d516a;
+  --mist: #c9d3de;
+  --paper: #ffffff;
+  --font: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --gutter: clamp(1rem, 4vw, 2rem);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--evening);
+  color: var(--paper);
+  font: 1.125rem/1.6 var(--font);
+}
+
+.page {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 2rem var(--gutter) 3rem;
+}
+
+h1 {
+  margin: 0 0 1rem;
+  font-size: 2rem;
+  line-height: 1.2;
+}
+
+h2 {
+  margin: 2.25rem 0 0.5rem;
+  font-size: 1.35rem;
+  line-height: 1.3;
+}
+
+p,
+ul {
+  margin: 0 0 0.9rem;
+}
+
+li + li {
+  margin-top: 0.4rem;
+}
+
+.lead {
+  font-size: 1.25rem;
+}
+
+.quiet {
+  color: var(--mist);
+}
+
+a {
+  color: var(--paper);
+  text-underline-offset: 0.2em;
+}
+
+a:focus-visible {
+  outline: 3px solid var(--paper);
+  outline-offset: 3px;
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 3.5rem;
+  margin-top: 1.5rem;
+  padding: 0.75rem 1.75rem;
+  border-radius: 0.75rem;
+  background: var(--paper);
+  color: var(--evening);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.back:hover {
+  background: var(--mist);
+}
+
+.box {
+  padding: 1rem 1.25rem;
+  border: 2px solid var(--dusk-edge);
+  border-radius: 0.75rem;
+  background: var(--dusk);
+}
+
+.box p:last-child {
+  margin-bottom: 0;
+}

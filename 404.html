@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Page not found – Worship Presenter</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2222%22 y=%225%22 rx=%224%22 fill=%22%231d2a3a%22/%3E%3Crect x=%227%22 y=%2213%22 width=%2218%22 height=%223%22 rx=%221.5%22 fill=%22%23f2c14e%22/%3E%3C/svg%3E">
+  <!-- GitHub Pages shows this page for any missing address, however deep, so
+       relative links would point to the wrong place. The styles are inline, and
+       the script below points the link at the site's folder. -->
+  <style>
+    body {
+      margin: 0;
+      background: #1d2a3a;
+      color: #ffffff;
+      font: 1.125rem/1.6 "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    .page { max-width: 44rem; margin: 0 auto; padding: 3rem clamp(1rem, 4vw, 2rem); }
+    h1 { margin: 0 0 1rem; font-size: 2rem; line-height: 1.2; }
+    p { margin: 0 0 0.9rem; }
+    .back {
+      display: inline-flex;
+      align-items: center;
+      min-height: 3.5rem;
+      margin-top: 1rem;
+      padding: 0.75rem 1.75rem;
+      border-radius: 0.75rem;
+      background: #ffffff;
+      color: #1d2a3a;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .back:hover { background: #c9d3de; }
+    .back:focus-visible { outline: 3px solid #ffffff; outline-offset: 3px; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <h1>This page isn’t here</h1>
+    <p>The address may be mistyped, or the page has moved.</p>
+    <p>Your songs and services are safe. They are kept in this browser, not on this page.</p>
+    <a id="home" class="back" href="./">Go to Worship Presenter</a>
+  </main>
+  <script>
+    // On GitHub Pages the site lives in a folder named after the repo, such as
+    // /worship-presenter/. Link to that folder, whatever the missing address was.
+    if (location.hostname.endsWith('.github.io')) {
+      const folder = location.pathname.split('/')[1];
+      if (folder) document.getElementById('home').href = `/${folder}/`;
+    }
+  </script>
+</body>
+</html>
