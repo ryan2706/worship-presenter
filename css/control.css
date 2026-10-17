@@ -1,0 +1,382 @@
+:root {
+  --evening: #1d2a3a;
+  --dusk: #2b3b4f;
+  --dusk-edge: #3d516a;
+  --mist: #c9d3de;
+  --paper: #ffffff;
+  --candle: #f2c14e;
+  --ember: #e0674f;
+  --black: #000000;
+  --font: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --gutter: clamp(1rem, 3vw, 2rem);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--evening);
+  color: var(--paper);
+  font: 1.125rem/1.5 var(--font);
+}
+
+h1,
+h2,
+p,
+ol {
+  margin: 0;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Buttons */
+
+.btn {
+  min-height: 3.5rem;
+  padding: 0.75rem 1.25rem;
+  border: 2px solid var(--dusk-edge);
+  border-radius: 0.75rem;
+  background: var(--dusk);
+  color: var(--paper);
+  font: 700 1.125rem/1.2 var(--font);
+  cursor: pointer;
+}
+
+.btn:hover {
+  border-color: var(--mist);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:focus-visible,
+.tile:focus-visible {
+  outline: 3px solid var(--paper);
+  outline-offset: 3px;
+}
+
+.btn-open {
+  background: var(--paper);
+  border-color: var(--paper);
+  color: var(--evening);
+  padding-inline: 1.75rem;
+}
+
+.btn-open:hover {
+  background: var(--mist);
+  border-color: var(--mist);
+}
+
+.btn kbd {
+  display: inline-block;
+  margin-left: 0.35em;
+  padding: 0 0.4em;
+  border: 1.5px solid currentColor;
+  border-radius: 0.3em;
+  font: inherit;
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+
+.btn-black[aria-pressed="true"] {
+  background: var(--ember);
+  border-color: var(--ember);
+  color: var(--black);
+}
+
+/* Header */
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem var(--gutter);
+}
+
+.top h1 {
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.display-status {
+  color: var(--mist);
+  font-size: 1rem;
+}
+
+.display-status::before {
+  content: "";
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  margin-right: 0.45em;
+  border: 2px solid var(--mist);
+  border-radius: 50%;
+}
+
+.display-status.is-open {
+  color: var(--paper);
+}
+
+.display-status.is-open::before {
+  background: var(--candle);
+  border-color: var(--candle);
+}
+
+.alert {
+  margin: 0 var(--gutter) 1rem;
+  padding: 1rem 1.25rem;
+  border-left: 6px solid var(--ember);
+  border-radius: 0.5rem;
+  background: var(--dusk);
+}
+
+/* Tips */
+
+.tips {
+  margin: 0 var(--gutter) 1.5rem;
+  padding: 1.25rem 1.5rem;
+  border-radius: 1rem;
+  background: var(--dusk);
+}
+
+.tips h2 {
+  font-size: 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.tips-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.75rem 1.5rem;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.tips-steps li {
+  counter-increment: step;
+  position: relative;
+  padding-left: 2.75rem;
+  min-height: 1.9rem;
+}
+
+.tips-steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: -0.1rem;
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  background: var(--evening);
+  color: var(--candle);
+  font-weight: 700;
+}
+
+.tips-note {
+  margin-top: 1rem;
+  color: var(--mist);
+  font-size: 1rem;
+  max-width: 70ch;
+}
+
+/* Slides: each tile is a small picture of the TV. */
+
+.main {
+  flex: 1;
+  padding: 0 var(--gutter) 2rem;
+}
+
+.slides {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+  gap: 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 0.9rem;
+  scroll-margin-top: 1rem;
+  scroll-margin-bottom: calc(var(--bar-height, 6rem) + 1rem);
+}
+
+.tile-screen {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 9;
+  padding: 5% 6%;
+  border: 3px solid var(--dusk-edge);
+  border-radius: 0.75rem;
+  background: var(--black);
+  overflow: hidden;
+}
+
+.tile:hover .tile-screen {
+  border-color: var(--mist);
+}
+
+.tile-text {
+  width: 100%;
+  text-align: center;
+  white-space: pre-line;
+  overflow-wrap: break-word;
+  line-height: 1.25;
+  font-weight: 700;
+  text-wrap: balance;
+}
+
+.tile-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding-inline: 0.25rem;
+}
+
+.tile-number {
+  color: var(--mist);
+  font-weight: 700;
+}
+
+.tile-label {
+  flex: 1 1 8rem;
+}
+
+.tile-live {
+  margin-left: auto;
+  padding: 0.1rem 0.65rem;
+  border-radius: 999px;
+  background: var(--candle);
+  color: var(--black);
+  font-size: 0.95rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tile:not(.is-live) .tile-live {
+  display: none;
+}
+
+/* The slide on the TV gets a thick candle-gold frame. */
+.tile.is-live .tile-screen {
+  border-color: var(--candle);
+  box-shadow: 0 0 0 3px var(--candle);
+}
+
+/* Selected but hidden (black screen or cleared): the frame is dashed. */
+.tile.is-live.is-hidden .tile-screen {
+  border-style: dashed;
+  box-shadow: none;
+}
+
+.tile.is-live.is-hidden .tile-live {
+  background: transparent;
+  color: var(--candle);
+  box-shadow: inset 0 0 0 2px var(--candle);
+}
+
+/* Bottom bar stays in reach on long pages and on phones. */
+
+.bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
+  padding: 1rem var(--gutter) calc(1rem + env(safe-area-inset-bottom, 0px));
+  border-top: 2px solid var(--dusk-edge);
+  background: var(--evening);
+}
+
+.live-note {
+  flex: 1 1 16rem;
+  color: var(--mist);
+}
+
+.live-note.is-warning {
+  color: var(--ember);
+  font-weight: 700;
+}
+
+.bar-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+@media (max-width: 40rem) {
+  body {
+    font-size: 1rem;
+  }
+
+  .top h1 {
+    font-size: 1.3rem;
+  }
+
+  .top .btn-open {
+    width: 100%;
+  }
+
+  .tips {
+    padding: 1rem 1.15rem;
+  }
+
+  .bar-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .bar {
+    padding-top: 0.75rem;
+  }
+
+  .live-note {
+    flex-basis: 100%;
+    font-size: 0.95rem;
+  }
+
+  /* Phones have no B key. */
+  .btn kbd {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn:active {
+    transform: none;
+  }
+}

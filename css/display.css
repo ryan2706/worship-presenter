@@ -1,0 +1,116 @@
+:root {
+  --black: #000000;
+  --paper: #ffffff;
+  --mist: #c9d3de;
+  --candle: #f2c14e;
+  --font: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--black);
+  color: var(--paper);
+  font-family: var(--font);
+  overflow: hidden;
+}
+
+.screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Keeps words away from the edges, which some TVs crop. */
+  padding: 5vh 6vw;
+}
+
+.text {
+  width: 100%;
+  max-height: 100%;
+  text-align: center;
+  white-space: pre-line;
+  overflow-wrap: break-word;
+  line-height: 1.25;
+  font-weight: 700;
+  text-wrap: balance;
+}
+
+body.black .text,
+body.waiting .text {
+  visibility: hidden;
+}
+
+/* Shown only before the first slide arrives. */
+.waiting-note {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  padding: 2rem;
+  text-align: center;
+  color: var(--mist);
+  font-size: clamp(1rem, 2.4vw, 1.75rem);
+  opacity: 0.7;
+}
+
+.waiting-note p {
+  margin: 0;
+}
+
+body:not(.waiting) .waiting-note {
+  display: none;
+}
+
+.fullscreen-btn {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  min-height: 3.5rem;
+  padding: 0.75rem 1.5rem;
+  border: 2px solid var(--mist);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--paper);
+  font: 700 1.25rem/1 var(--font);
+  cursor: pointer;
+  transition: opacity 0.3s;
+}
+
+.fullscreen-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.fullscreen-btn:focus-visible {
+  outline: 3px solid var(--candle);
+  outline-offset: 3px;
+}
+
+/* In full screen, or when the mouse is still, hide the button and pointer. */
+body.is-fullscreen .fullscreen-btn {
+  display: none;
+}
+
+body.idle:not(.waiting),
+body.idle:not(.waiting) * {
+  cursor: none;
+}
+
+body.idle:not(.waiting) .fullscreen-btn {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fullscreen-btn {
+    transition: none;
+  }
+}
