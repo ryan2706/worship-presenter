@@ -31,6 +31,8 @@ Volunteers who are not technical.
 - `display.html`, `css/display.css`, `js/display.js`: the Display (TV) window.
 - `js/channel.js`: the shared channel name, the message list, and the keyboard shortcut rules.
 - `js/fit-text.js`: auto-fits text to any screen, used by the TV and by the slide previews.
+- `js/library.js`: the song library. It is the only file that touches IndexedDB.
+- `js/sample-songs.js`: the sample hymns that are added the first time the app runs.
 
 To try it locally, run `python3 -m http.server 8000` in the project folder and open http://localhost:8000. ES modules don't load from `file://`.
 
@@ -46,13 +48,20 @@ The channel name is `worship-presenter`.
   - `{type:'bye'}` is sent when the window closes.
   - `{type:'key', action}` passes on a shortcut pressed on the TV window: `next`, `previous` or `black`.
 
+### Songs
+
+- They are stored in the IndexedDB database `worship-presenter`, store `songs`, keyed by `id`. The samples are added only when the database is first created. If IndexedDB can't be opened, the built-in samples are shown instead.
+- A song is `{id, title, author, year, source?, sections: [{name, text}], order?}`. Each section is one slide. `order` lists section names in the order they're sung, so a chorus can repeat. Without it, the sections are used in the order listed.
+- Each slide tile shows its section name, such as "Verse 1" or "Chorus".
+
 ### Behaviour rules
 
 - **One key press, one action.** Arrows, PageUp/PageDown and B always act. Space and Enter only mean "next slide" when focus is not on a button, link or form field; otherwise the focused button handles them. After a mouse click on a slide, focus leaves it so that Space goes back to meaning "next".
 - **Black screen and Clear text are different.** Black screen hides everything (and later, backgrounds too) and is a toggle. Clear text hides only the words and keeps the slide selected. Picking a slide brings the words back.
 - **Auto-fit keeps lyric lines whole** when that is at least 70% of the size that wrapping would allow. The largest text is capped at one fifth of the screen height.
 - **The Display holds a screen wake lock** while it is showing something, and asks again when the window becomes visible.
-- The Control page keeps its current slide in `sessionStorage`, so a reload carries on from the same slide.
+- **Looking at a song doesn't change the TV.** Picking a song shows its slides on the Control page only. Next and Space keep going through the song on the TV. Next on that song's last slide starts the first slide of the song being viewed. Previous never leaves the song on the TV. Clicking any slide shows it straight away. When the TV is showing a different song from the one being viewed, the song list marks it "On the TV", and a note with a **Go to that song** button explains this.
+- The Control page keeps the song on the TV, its slide, and the song being viewed in `sessionStorage`, so a reload carries on from the same place. Saved values that no longer match a song are dropped.
 
 ### Look
 
@@ -69,6 +78,7 @@ The channel name is `worship-presenter`.
 ## Content rules
 
 - Ship only public-domain hymns as samples. That means hymns published before 1929.
+- Use the commonly sung wording rather than the author's earliest version, as long as every verse was published before 1929. Note where the wording differs in the song's `source` field.
 - Ship only public-domain Bibles: KJV and WEB.
 - Never put an API key in the site's code. Keys live only in the Cloudflare Worker.
 - When we add ESV, follow Crossway's ESV API terms (including their limits on how much text is shown and stored, and the required copyright notice).
@@ -86,3 +96,6 @@ Add one line per decision, newest at the bottom, with the date.
 - 2026-10-17: Project brief written and this CLAUDE.md created.
 - 2026-10-17: First version: a Control page and a Display page with 3 test slides, Black screen, Clear text, auto-fit, Control-reload detection and wake lock. The file layout, messages and look are as described above.
 - 2026-10-17: Atkinson Hyperlegible comes from Google Fonts for now. It must be self-hosted when we build the offline (PWA) version.
+- 2026-10-17: Song library replaces the test slides. Songs live in IndexedDB, and 8 public-domain sample hymns are added on first run. Adding, editing and deleting songs comes next.
+- 2026-10-17: Sample hymns: Amazing Grace, Be Thou My Vision, Blessed Assurance, Come Thou Fount, Holy Holy Holy, It Is Well with My Soul, Rock of Ages, What a Friend We Have in Jesus. Commonly sung wording, all verses pre-1929.
+- 2026-10-17: Looking at a song doesn't change the TV. Next finishes the song on the TV, then starts the song being viewed.

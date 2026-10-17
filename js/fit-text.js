@@ -45,9 +45,12 @@ export function fitText(textEl, box, { min = 8, maxShare = 0.2 } = {}) {
 }
 
 // Re-fits whenever the box changes size, and once the web font has loaded.
+// Call `refit.stop()` when the box is thrown away.
 export function keepFitted(textEl, box, options) {
   const refit = () => fitText(textEl, box, options);
-  new ResizeObserver(refit).observe(box);
+  const observer = new ResizeObserver(refit);
+  observer.observe(box);
   document.fonts?.ready.then(refit);
+  refit.stop = () => observer.disconnect();
   return refit;
 }

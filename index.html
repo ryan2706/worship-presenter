@@ -30,7 +30,7 @@
       <li>Press <strong>Open display</strong>. A new window opens.</li>
       <li>Drag that window onto the TV.</li>
       <li>Click inside it and press <strong>Full screen</strong>, or the F key.</li>
-      <li>Come back here and pick a slide.</li>
+      <li>Come back here, pick a song, then pick a slide.</li>
     </ol>
     <p class="tips-note">
       If the window won't move onto the TV, open your computer's display settings and choose
@@ -39,8 +39,19 @@
   </section>
 
   <main class="main">
-    <h2 class="visually-hidden">Slides</h2>
-    <ol id="slides" class="slides"></ol>
+    <section class="songs-panel" aria-labelledby="songs-title">
+      <h2 id="songs-title" class="panel-title">Songs</h2>
+      <ul id="songs" class="songs"></ul>
+    </section>
+
+    <section class="slides-panel" aria-labelledby="song-title">
+      <h2 id="song-title" class="song-title">Loading songs…</h2>
+      <div id="elsewhere" class="elsewhere" hidden>
+        <p id="elsewhere-text"></p>
+        <button id="go-live-song" class="btn" type="button">Go to that song</button>
+      </div>
+      <ol id="slides" class="slides"></ol>
+    </section>
   </main>
 
   <footer class="bar">
