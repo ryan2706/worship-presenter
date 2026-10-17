@@ -1,0 +1,11 @@
+{
+  "name": "worship-presenter-tests",
+  "private": true,
+  "description": "Browser checks for Worship Presenter. The app itself has no build step; this folder only holds test tooling.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

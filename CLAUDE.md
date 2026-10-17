@@ -36,6 +36,15 @@ Volunteers who are not technical.
 
 To try it locally, run `python3 -m http.server 8000` in the project folder and open http://localhost:8000. ES modules don't load from `file://`.
 
+### Tests
+
+The browser checks for every phase live in `tests/presenter.spec.js` and use Playwright. The test tooling is only in `tests/`. The app itself still has no build step and no `package.json`.
+
+- First time only: `npm install --prefix tests`.
+- Run all checks: `npm test --prefix tests` (from the project folder).
+- The tests start their own server on port 8123 (so they don't clash with port 8000) and use the installed Google Chrome. To use Playwright's own Chromium instead, run `(cd tests && npx playwright install chromium)` once, then `TEST_BROWSER=chromium npm test --prefix tests`.
+- Add checks for each new feature to the spec, and run the whole suite before every commit.
+
 ### Messages between the windows
 
 The channel name is `worship-presenter`.
@@ -99,3 +108,4 @@ Add one line per decision, newest at the bottom, with the date.
 - 2026-10-17: Song library replaces the test slides. Songs live in IndexedDB, and 8 public-domain sample hymns are added on first run. Adding, editing and deleting songs comes next.
 - 2026-10-17: Sample hymns: Amazing Grace, Be Thou My Vision, Blessed Assurance, Come Thou Fount, Holy Holy Holy, It Is Well with My Soul, Rock of Ages, What a Friend We Have in Jesus. Commonly sung wording, all verses pre-1929.
 - 2026-10-17: Looking at a song doesn't change the TV. Next finishes the song on the TV, then starts the song being viewed.
+- 2026-10-17: Phase 1 and 2 browser checks saved as a Playwright test suite in `tests/`. Run with `npm test --prefix tests`. It uses the installed Google Chrome, because downloading Playwright's Chromium timed out here.
