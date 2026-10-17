@@ -682,12 +682,18 @@ textarea {
   padding-inline: 0.25rem;
 }
 
-/* Keep your songs safe: back up, restore and share, under the song list. */
+/* Keep your songs safe: back up, restore and share, under the song list
+   (or under the slides on phones). */
 
 .keep-safe {
   margin-top: 1.5rem;
   padding-top: 1.25rem;
   border-top: 2px solid var(--dusk-edge);
+}
+
+/* On phones it sits below the slides, as its own block. */
+.main > .keep-safe {
+  margin-top: 0;
 }
 
 .keep-safe-help {

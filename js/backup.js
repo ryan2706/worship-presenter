@@ -11,7 +11,7 @@ const REMIND_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 const CANT_READ = 'This browser isn’t letting us read your songs (it may be a private window).';
 const CANT_SAVE = 'This browser isn’t letting us save songs (it may be a private window). Nothing was changed.';
 
-export function createBackup({ onOpen, onClose, getSongs, onImported }) {
+export function createBackup({ onOpen, onClose, getSongs, onImported, isTvInUse = () => false }) {
   const el = {
     backup: document.getElementById('backup'),
     restore: document.getElementById('restore'),
@@ -362,17 +362,19 @@ export function createBackup({ onOpen, onClose, getSongs, onImported }) {
     el.note.hidden = false;
   }
 
+  // Only shown while nothing is on the TV, so it never gets in the way during worship.
   function renderReminder() {
     const { changedAt, dismissedAt } = loadReminder();
     const now = Date.now();
     el.reminder.hidden = !(
+      !isTvInUse() &&
       changedAt &&
       now - changedAt >= REMIND_AFTER_MS &&
       (!dismissedAt || now - dismissedAt >= REMIND_AFTER_MS)
     );
   }
 
-  return { noteChange };
+  return { noteChange, refreshReminder: renderReminder };
 }
 
 // Asks the browser to keep the songs even when the device is short of space.

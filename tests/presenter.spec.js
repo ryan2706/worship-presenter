@@ -1160,3 +1160,40 @@ test.describe('Phase 4: backup, restore and sharing', () => {
     await expect(button(page, 'Restore songs')).toBeInViewport();
   });
 });
+
+test.describe('Phase 5: small fixes', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const REMINDER_KEY = 'worship-presenter:backup';
+
+  test('on a phone, Keep your songs safe sits below the slides', async ({ page }) => {
+    await openControl(page);
+    // Wide screens: under the song list.
+    expect(await page.locator('#keep-safe').evaluate((el) => el.parentElement.classList.contains('songs-panel'))).toBe(true);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect.poll(() => page.locator('#keep-safe').evaluate((el) => el.previousElementSibling?.className)).toBe('slides-panel');
+    const slides = await page.locator('#slides').boundingBox();
+    const safe = await page.locator('#keep-safe').boundingBox();
+    expect(safe.y).toBeGreaterThan(slides.y + slides.height - 1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect.poll(() => page.locator('#keep-safe').evaluate((el) => el.parentElement.className)).toBe('songs-panel');
+  });
+
+  test('the backup reminder only shows while nothing is on the TV', async ({ page }) => {
+    const reminder = page.locator('#reminder');
+    await openControl(page);
+    await page.evaluate(([key, v]) => localStorage.setItem(key, JSON.stringify(v)), [REMINDER_KEY, { changedAt: Date.now() - 8 * DAY }]);
+    await page.reload();
+    await expect(page.locator('.song')).toHaveCount(8);
+    await expect(reminder).toBeVisible();
+
+    await tile(page, 0).click();
+    await expect(reminder).toBeHidden();
+    await page.reload();
+    await expect(page.locator('.song')).toHaveCount(8);
+    await expectLiveTile(page, 0);
+    await expect(reminder).toBeHidden();
+  });
+});

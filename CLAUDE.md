@@ -95,8 +95,9 @@ Everything stays on this device unless the volunteer presses a button that saves
 - **Restore from backup** opens either kind of file. Problems are explained in plain words (not a backup, damaged, made by a newer version, no songs). Songs that can't be read are skipped and counted.
 - Before anything changes, a summary says "12 new songs, 3 songs you already have." A song is matched by id, then by title. Songs with the same title and words are left alone. For the rest, the user picks **Keep mine**, **Use the backup's** (or **Use the shared one**) or **Keep both**, one by one or for all of them. The default is Keep mine, except when the user's copy is an unedited sample, where it's the file's version. Keep both adds the file's copy titled "(from backup)" or "(shared)".
 - A restore never deletes a song that isn't in the file. A deleted-sample marker only hides a sample that hasn't been edited here.
+- The **Keep your songs safe** box (Back up, Restore, Share) sits under the song list. On phones it moves below the slides, so the slides come first.
 - After any change to the songs, the app asks the browser to keep its storage (`navigator.storage.persist`).
-- `localStorage` key `worship-presenter:backup` holds `changedAt` (first change since the last backup) and `dismissedAt`. A reminder shows when changes have gone 7 days without a backup. **Not now** hides it for 7 days. Songs that existed before this feature count as a change.
+- `localStorage` key `worship-presenter:backup` holds `changedAt` (first change since the last backup) and `dismissedAt`. A reminder shows when changes have gone 7 days without a backup, but only while no slide has been put on the TV in this session (so it never shows during worship). **Not now** hides it for 7 days. Songs that existed before this feature count as a change.
 
 ### Behaviour rules
 
@@ -149,3 +150,4 @@ Add one line per decision, newest at the bottom, with the date.
 - 2026-10-17: Saving the song on the TV updates the TV and keeps the same slide where it still exists. No shortcuts fire while typing in a text box.
 - 2026-10-17: The editor offers to join one-line slides into slides of up to 4 lines, and notes slides over 6 lines as long.
 - 2026-10-17: Backup, restore and sharing added. One JSON file format (`kind` backup or shared, `version` 1) for both, restored with the same button. Restore shows a summary and asks about each song you already have; it never deletes songs not in the file. Storage persistence is requested after changes, and a dismissable reminder appears when changes go 7 days without a backup.
+- 2026-10-17: On phones, Keep your songs safe moves below the slides. The backup reminder only shows while no slide has been put on the TV in this session.

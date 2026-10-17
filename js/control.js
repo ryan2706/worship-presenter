@@ -28,6 +28,9 @@ let fitters = [];
 
 const el = {
   main: document.getElementById('main'),
+  songsPanel: document.querySelector('.songs-panel'),
+  slidesPanel: document.querySelector('.slides-panel'),
+  keepSafe: document.getElementById('keep-safe'),
   songs: document.getElementById('songs'),
   search: document.getElementById('search'),
   noMatch: document.getElementById('no-match'),
@@ -110,6 +113,8 @@ const backup = createBackup({
   onClose: () => (el.main.hidden = false),
   getSongs: () => songs,
   onImported: () => reloadLibrary(state.viewId),
+  // The reminder waits until nothing has been put on the TV.
+  isTvInUse: () => state.index >= 0,
 });
 el.addSong.addEventListener('click', () => editor.open());
 el.editSong.addEventListener('click', () => {
@@ -145,6 +150,17 @@ new ResizeObserver(() => {
   document.documentElement.style.setProperty('--bar-height', `${bar.offsetHeight}px`);
 }).observe(bar);
 
+// On phones the slides come after the songs, so "Keep your songs safe" moves
+// below the slides, out of the way. Moving it keeps the Tab order matching the screen.
+const phone = matchMedia('(max-width: 55.99rem)');
+phone.addEventListener('change', placeKeepSafe);
+placeKeepSafe();
+
+function placeKeepSafe() {
+  if (phone.matches) el.slidesPanel.after(el.keepSafe);
+  else el.songsPanel.append(el.keepSafe);
+}
+
 render();
 start();
 
@@ -156,6 +172,7 @@ async function start() {
   buildTiles();
   render();
   sendState();
+  backup.refreshReminder();
 }
 
 async function loadSongs() {
@@ -235,7 +252,7 @@ function buildSongList() {
     button.addEventListener('click', (event) => {
       showSong(song.id);
       // When the slides are below the songs (phones), bring them into view.
-      if (matchMedia('(max-width: 55.99rem)').matches) {
+      if (phone.matches) {
         el.songTitle.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
       }
       // After a mouse click, let Space and Enter go back to meaning "next slide".
@@ -337,6 +354,7 @@ function update() {
   saveState();
   sendState();
   render();
+  backup.refreshReminder();
   // On small screens, keep the slide that's on the TV in view.
   if (state.songId === state.viewId) {
     tiles[state.index]?.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() });
