@@ -24,6 +24,17 @@
     Your browser stopped the TV window from opening. Allow pop-ups for this site, then press Open display again.
   </p>
 
+  <div id="reminder" class="reminder" role="status" hidden>
+    <p>
+      You’ve changed your songs but haven’t saved a backup for over a week.
+      A backup file keeps them safe if this browser is ever cleared.
+    </p>
+    <div class="reminder-buttons">
+      <button id="reminder-backup" class="btn" type="button">Back up my songs</button>
+      <button id="reminder-later" class="btn" type="button">Not now</button>
+    </div>
+  </div>
+
   <section id="tips" class="tips" aria-labelledby="tips-title">
     <h2 id="tips-title">How to put it on the TV</h2>
     <ol class="tips-steps">
@@ -51,6 +62,20 @@
       <ul id="songs" class="songs"></ul>
       <p id="no-match" class="no-match" role="status" hidden></p>
       <button id="bring-back" class="link-button" type="button" hidden>Bring back deleted sample songs</button>
+
+      <div class="keep-safe" role="group" aria-labelledby="keep-safe-title">
+        <h3 id="keep-safe-title" class="panel-title">Keep your songs safe</h3>
+        <p class="keep-safe-help">
+          Your songs are saved in this browser only. A backup file keeps them safe and moves them to another computer.
+        </p>
+        <div class="keep-safe-buttons">
+          <button id="backup" class="btn btn-small" type="button">Back up my songs</button>
+          <button id="restore" class="btn btn-small" type="button">Restore from backup</button>
+          <button id="share" class="btn btn-small" type="button">Share songs</button>
+        </div>
+        <input id="restore-file" type="file" accept=".json,application/json" hidden>
+        <p id="file-note" class="file-note" role="status" hidden></p>
+      </div>
     </section>
 
     <section class="slides-panel" aria-labelledby="song-title">
@@ -117,6 +142,64 @@
         <ol id="preview" class="slides preview"></ol>
       </div>
     </form>
+  </section>
+
+  <section id="songs-file" class="songs-file" aria-labelledby="songs-file-title" hidden>
+    <h2 id="songs-file-title" class="song-title" tabindex="-1">Restore from backup</h2>
+
+    <div id="restore-view" hidden>
+      <p id="restore-problem" class="alert" role="alert" hidden></p>
+      <div id="restore-problem-buttons" class="file-actions" hidden>
+        <button id="restore-try-again" class="btn btn-primary" type="button">Choose another file</button>
+        <button id="restore-back" class="btn" type="button">Back to songs</button>
+      </div>
+
+      <div id="restore-plan" class="restore-plan" hidden>
+        <p id="restore-summary" class="restore-summary"></p>
+
+        <div id="restore-added">
+          <h3 class="panel-title">New songs</h3>
+          <ul id="restore-added-list" class="restore-list"></ul>
+        </div>
+
+        <div id="restore-existing">
+          <h3 class="panel-title">Songs you already have</h3>
+          <p id="restore-existing-text"></p>
+          <div id="restore-all" class="choices choices-all" role="group" aria-label="For all of them">
+            <span class="choices-label">For all of them:</span>
+            <button class="btn btn-small" type="button" data-choice="mine">Keep mine</button>
+            <button class="btn btn-small" type="button" data-choice="theirs">Use the backup’s</button>
+            <button class="btn btn-small" type="button" data-choice="both">Keep both</button>
+          </div>
+          <ul id="restore-conflicts" class="conflicts"></ul>
+        </div>
+
+        <p id="restore-extra" hidden></p>
+        <p class="field-help">Songs on this device that aren’t in the file won’t be changed or removed.</p>
+        <p id="restore-error" class="alert" role="alert" hidden></p>
+
+        <div class="file-actions">
+          <button id="restore-go" class="btn btn-primary" type="button">Restore songs</button>
+          <button id="restore-cancel" class="btn" type="button">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="share-view" class="share-view" hidden>
+      <p>
+        Tick the songs you want to share. They are saved together in one file.
+        Send it to the other group, and they add the songs by pressing <strong>Restore from backup</strong>.
+      </p>
+      <div class="share-tick-all">
+        <button id="share-all" class="link-button" type="button">Tick all</button>
+        <button id="share-none" class="link-button" type="button">Untick all</button>
+      </div>
+      <ul id="share-list" class="share-list"></ul>
+      <div class="file-actions">
+        <button id="share-go" class="btn btn-primary" type="button" disabled>Tick the songs to share</button>
+        <button id="share-cancel" class="btn" type="button">Cancel</button>
+      </div>
+    </div>
   </section>
 
   <footer class="bar">

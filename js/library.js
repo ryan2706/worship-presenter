@@ -66,12 +66,44 @@ export async function listSongs() {
 // Saves a new or changed song. A sample is marked as edited only if its
 // title or words differ from the original, so it can still get repo updates.
 export async function saveSong(song) {
-  const record = structuredClone(song);
-  delete record.edited;
-  const sample = SAMPLES.get(record.id);
-  if (sample && !sameWords(record, sample)) record.edited = true;
+  const record = prepare(song);
   await write((store) => store.put(record));
   return record;
+}
+
+// Adds or replaces several songs at once, from a backup or a shared file.
+// A "deleted" marker is only ever written for a sample, never over a song
+// the user added.
+export async function addSongs(records) {
+  await write((store) => {
+    records.forEach((record) => {
+      if (record.deleted) {
+        if (SAMPLES.has(record.id)) store.put({ id: record.id, deleted: true });
+      } else {
+        store.put(prepare(record));
+      }
+    });
+  });
+}
+
+// Everything in the library, exactly as stored: songs and "deleted" markers.
+export async function listRecords() {
+  const db = await openLibrary();
+  return result(db.transaction(SONGS).objectStore(SONGS).getAll());
+}
+
+// What a backup needs: songs the user added, edited samples, and markers for
+// deleted samples. Unedited samples aren't needed; the app always has them.
+export function needsBackup(record) {
+  return !SAMPLES.has(record.id) || record.edited === true || record.deleted === true;
+}
+
+export function isSample(id) {
+  return SAMPLES.has(id);
+}
+
+export function newSongId() {
+  return crypto.randomUUID?.() ?? `song-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 // User songs are removed. Samples leave a marker so they don't come back.
@@ -114,7 +146,20 @@ export function slidesFor(song) {
     .map(({ name, text }) => ({ name, text }));
 }
 
+// True when two songs have the same title and the same slides in the same order.
+export function sameWords(a, b) {
+  return a.title === b.title && same(slidesFor(a), slidesFor(b));
+}
+
 // Helpers
+
+function prepare(song) {
+  const record = structuredClone(song);
+  delete record.edited;
+  const sample = SAMPLES.get(record.id);
+  if (sample && !sameWords(record, sample)) record.edited = true;
+  return record;
+}
 
 async function deletedSampleIds() {
   const db = await openLibrary();
@@ -146,8 +191,4 @@ function finished(tx) {
 
 function same(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
-}
-
-function sameWords(a, b) {
-  return a.title === b.title && same(slidesFor(a), slidesFor(b));
 }

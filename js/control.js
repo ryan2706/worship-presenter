@@ -1,5 +1,6 @@
 import { openChannel, shortcutFor } from './channel.js';
 import { keepFitted } from './fit-text.js';
+import { createBackup } from './backup.js';
 import { createEditor } from './editor.js';
 import {
   countDeletedSamples,
@@ -87,16 +88,28 @@ const editor = createEditor({
   },
   onSave: async (song) => {
     await saveSong(song);
+    backup.noteChange();
     await reloadLibrary(song.id);
   },
   onRestore: async (id) => {
     await restoreSample(id);
+    backup.noteChange();
     await reloadLibrary(id);
   },
   onDelete: async (id) => {
     await deleteSong(id);
+    backup.noteChange();
     await reloadLibrary();
   },
+});
+
+// Back up, restore and share songs. Like the editor, it takes the place of
+// the songs and slides while it's open, and the bottom bar still runs the TV.
+const backup = createBackup({
+  onOpen: () => (el.main.hidden = true),
+  onClose: () => (el.main.hidden = false),
+  getSongs: () => songs,
+  onImported: () => reloadLibrary(state.viewId),
 });
 el.addSong.addEventListener('click', () => editor.open());
 el.editSong.addEventListener('click', () => {
@@ -107,6 +120,7 @@ el.search.addEventListener('input', applySearch);
 el.bringBack.addEventListener('click', async () => {
   try {
     await restoreDeletedSamples();
+    backup.noteChange();
   } catch (error) {
     console.warn('The deleted samples could not be brought back.', error);
   }

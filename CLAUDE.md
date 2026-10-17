@@ -35,6 +35,8 @@ Volunteers who are not technical.
 - `js/editor.js`: the song editor (add, edit, delete, restore) with its live preview.
 - `js/lyrics.js`: turns the editor's lyrics box into a song's sections and back.
 - `js/sample-songs.js`: the sample hymns that are added the first time the app runs.
+- `js/backup-file.js`: makes and checks backup and shared-song files, and works out what a restore would change. No page code.
+- `js/backup.js`: the Back up, Restore and Share buttons and screens, and the backup reminder.
 
 To try it locally, run `python3 -m http.server 8000` in the project folder and open http://localhost:8000. ES modules don't load from `file://`.
 
@@ -82,6 +84,19 @@ The channel name is `worship-presenter`.
 - The note "Songs you add are saved on this device only. For songs still under copyright, your group needs a CCLI licence." is always shown.
 - **Editing doesn't change the TV until Save.** When the song on the TV is saved, the TV gets the new words and stays on the same slide. It looks for that slide in this order: the same position with the same name, then the nearest slide with that name, then the same position, then the last slide. Black screen and Clear text stay as they were. Deleting the song on the TV clears the TV.
 - Search (above the song list) matches titles and words. It ignores capitals, accents, punctuation and curly quotes.
+
+### Backup, restore and sharing
+
+Everything stays on this device unless the volunteer presses a button that saves a file.
+
+- A file is `{app: 'Worship Presenter', kind: 'backup' | 'shared', version: 1, savedAt, songs: [...]}`.
+- **Back up my songs** saves `worship-songs-YYYY-MM-DD.json` (local date) with songs the user added, edited samples, and `{id, deleted: true}` markers for deleted samples. Unedited samples are left out.
+- **Share songs** lets the user tick songs and saves `shared-songs-YYYY-MM-DD.json` with only those songs.
+- **Restore from backup** opens either kind of file. Problems are explained in plain words (not a backup, damaged, made by a newer version, no songs). Songs that can't be read are skipped and counted.
+- Before anything changes, a summary says "12 new songs, 3 songs you already have." A song is matched by id, then by title. Songs with the same title and words are left alone. For the rest, the user picks **Keep mine**, **Use the backup's** (or **Use the shared one**) or **Keep both**, one by one or for all of them. The default is Keep mine, except when the user's copy is an unedited sample, where it's the file's version. Keep both adds the file's copy titled "(from backup)" or "(shared)".
+- A restore never deletes a song that isn't in the file. A deleted-sample marker only hides a sample that hasn't been edited here.
+- After any change to the songs, the app asks the browser to keep its storage (`navigator.storage.persist`).
+- `localStorage` key `worship-presenter:backup` holds `changedAt` (first change since the last backup) and `dismissedAt`. A reminder shows when changes have gone 7 days without a backup. **Not now** hides it for 7 days. Songs that existed before this feature count as a change.
 
 ### Behaviour rules
 
@@ -133,3 +148,4 @@ Add one line per decision, newest at the bottom, with the date.
 - 2026-10-17: Edited samples are marked `edited` and are never overwritten by sample updates in the repo. Unedited samples follow the repo. Deleted samples leave a marker so they stay deleted until "Bring back deleted sample songs" is pressed.
 - 2026-10-17: Saving the song on the TV updates the TV and keeps the same slide where it still exists. No shortcuts fire while typing in a text box.
 - 2026-10-17: The editor offers to join one-line slides into slides of up to 4 lines, and notes slides over 6 lines as long.
+- 2026-10-17: Backup, restore and sharing added. One JSON file format (`kind` backup or shared, `version` 1) for both, restored with the same button. Restore shows a summary and asks about each song you already have; it never deletes songs not in the file. Storage persistence is requested after changes, and a dismissable reminder appears when changes go 7 days without a backup.

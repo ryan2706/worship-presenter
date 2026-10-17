@@ -2,6 +2,7 @@
 // Phase 1: the Control and TV windows, keys, Black screen, Clear text, reloads, wake lock, auto-fit.
 // Phase 2: the song library and switching between songs.
 // Phase 3: adding, editing, deleting and searching songs.
+// Phase 4: backing up, restoring and sharing songs, and the backup reminder.
 //
 // Every test gets a fresh browser profile, so storage starts empty and the
 // sample songs are added on first load.
@@ -803,5 +804,359 @@ test.describe('Phase 3: song editor', () => {
     for (const id of ['#previous', '#next', '#black', '#clear']) await expect(page.locator(id)).toBeInViewport();
     await button(page, 'Save song').scrollIntoViewIfNeeded();
     await expect(button(page, 'Save song')).toBeInViewport();
+  });
+});
+
+test.describe('Phase 4: backup, restore and sharing', () => {
+  const fs = require('fs');
+  const button = (page, name) => page.getByRole('button', { name, exact: true });
+  const DAY = 24 * 60 * 60 * 1000;
+  const REMINDER_KEY = 'worship-presenter:backup';
+
+  async function addSong(page, songTitle, words) {
+    await page.locator('#add-song').click();
+    await page.locator('#editor-song-title').fill(songTitle);
+    await page.locator('#editor-lyrics').fill(words);
+    await button(page, 'Save song').click();
+    await expect(page.locator('#editor')).toBeHidden();
+  }
+
+  async function editViewedSong(page, change) {
+    await button(page, 'Edit song').click();
+    const box = page.locator('#editor-lyrics');
+    await box.fill(change(await box.inputValue()));
+    await button(page, 'Save song').click();
+    await expect(page.locator('#editor')).toBeHidden();
+  }
+
+  async function deleteViewedSong(page) {
+    await button(page, 'Edit song').click();
+    await button(page, 'Delete song').click();
+    await button(page, 'Yes, delete it').click();
+    await expect(page.locator('#editor')).toBeHidden();
+  }
+
+  // Presses a button that saves a file, and returns the file's name and contents.
+  async function saveFileFrom(page, locator) {
+    const [download] = await Promise.all([page.waitForEvent('download'), locator.click()]);
+    return { name: download.suggestedFilename(), file: JSON.parse(fs.readFileSync(await download.path(), 'utf8')) };
+  }
+
+  async function chooseFile(page, contents, name = 'backup.json') {
+    const text = typeof contents === 'string' ? contents : JSON.stringify(contents);
+    await page.locator('#restore-file').setInputFiles({ name, mimeType: 'application/json', buffer: Buffer.from(text) });
+    await expect(page.locator('#songs-file')).toBeVisible();
+  }
+
+  // Like opening the app in a different browser: no songs or settings yet.
+  async function freshBrowser(page) {
+    await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          localStorage.clear();
+          sessionStorage.clear();
+          indexedDB.deleteDatabase('worship-presenter').onsuccess = resolve;
+        })
+    );
+    await page.reload();
+    await expect(page.locator('.song')).toHaveCount(8);
+  }
+
+  const today = (page) =>
+    page.evaluate(() => {
+      const d = new Date();
+      return [d.getFullYear(), d.getMonth() + 1, d.getDate()].map((n) => String(n).padStart(2, '0')).join('-');
+    });
+
+  const song = (id, title, ...texts) => ({ id, title, sections: texts.map((text, i) => ({ name: `Slide ${i + 1}`, text })) });
+  const fileWith = (songs, extra = {}) => ({ app: 'Worship Presenter', kind: 'backup', version: 1, songs, ...extra });
+
+  test('Back up my songs saves your songs, edited samples and deleted samples in one file', async ({ page }) => {
+    await openControl(page);
+    await addSong(page, 'Our Song', '[Verse 1]\nOne\n\n[Chorus]\nTwo\n\n[Chorus]');
+    await songButton(page, 'Amazing Grace').click();
+    await editViewedSong(page, (words) => words.replace('Amazing grace!', 'Amazing love!'));
+    await songButton(page, 'Rock of Ages').click();
+    await deleteViewedSong(page);
+
+    await expect(page.locator('.keep-safe-help')).toHaveText(
+      'Your songs are saved in this browser only. A backup file keeps them safe and moves them to another computer.'
+    );
+    const { name, file } = await saveFileFrom(page, button(page, 'Back up my songs'));
+    expect(name).toBe(`worship-songs-${await today(page)}.json`);
+    expect(file).toMatchObject({ app: 'Worship Presenter', kind: 'backup', version: 1 });
+    expect(Date.parse(file.savedAt)).not.toBeNaN();
+    expect(file.songs).toHaveLength(3);
+    const ours = file.songs.find((s) => s.title === 'Our Song');
+    expect(ours.order).toEqual(['Verse 1', 'Chorus', 'Chorus']);
+    expect(file.songs.find((s) => s.id === 'amazing-grace')).toMatchObject({ edited: true });
+    expect(file.songs.find((s) => s.id === 'amazing-grace').sections[0].text).toMatch(/^Amazing love!/);
+    expect(file.songs.find((s) => s.id === 'rock-of-ages')).toEqual({ id: 'rock-of-ages', deleted: true });
+    await expect(page.locator('#file-note')).toHaveText(
+      `Backup saved as ${name} with 2 songs you added or changed. Keep it somewhere safe, such as your email or cloud storage.`
+    );
+  });
+
+  test('restoring a backup in another browser brings everything back', async ({ page }) => {
+    await openControl(page);
+    await addSong(page, 'Our Song', 'One\n\nTwo');
+    await songButton(page, 'Amazing Grace').click();
+    await editViewedSong(page, (words) => words.replace('Amazing grace!', 'Amazing love!'));
+    await songButton(page, 'Rock of Ages').click();
+    await deleteViewedSong(page);
+    const { file } = await saveFileFrom(page, button(page, 'Back up my songs'));
+
+    await freshBrowser(page);
+    await chooseFile(page, file);
+    await expect(page.locator('#main')).toBeHidden();
+    await expect(page.locator('#songs-file-title')).toHaveText('Restore from backup');
+    await expect(page.locator('#songs-file-title')).toBeFocused();
+    await expect(page.locator('#restore-summary')).toHaveText('1 new song, 1 song you already have.');
+    await expect(page.locator('#restore-added-list li')).toHaveText(['Our Song']);
+    await expect(page.locator('#restore-existing-text')).toHaveText('It’s different from yours, so choose which to keep:');
+    await expect(page.locator('#restore-all')).toBeHidden();
+    // Yours is only the sample as it came with the app, so the backup's is suggested.
+    const conflict = page.locator('.conflict');
+    await expect(conflict.locator('.conflict-title')).toHaveText('Amazing Grace');
+    await expect(conflict.locator('.conflict-meta')).toHaveText(
+      'Yours is the sample that came with the app, with 5 slides. The backup’s has 5 slides.'
+    );
+    await expect(conflict.getByRole('button', { name: 'Use the backup’s' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#restore-extra')).toHaveText('1 sample song you had deleted will be hidden again: Rock of Ages.');
+
+    await button(page, 'Restore songs').click();
+    await expect(page.locator('#songs-file')).toBeHidden();
+    await expect(page.locator('#main')).toBeVisible();
+    await expect(page.locator('#file-note')).toHaveText('Done. We added 1 song, replaced 1 song and hid 1 deleted sample song.');
+    await expect(page.locator('.song')).toHaveCount(8);
+    await expect(songButton(page, 'Our Song')).toHaveCount(1);
+    await expect(songButton(page, 'Rock of Ages')).toHaveCount(0);
+    await songButton(page, 'Amazing Grace').click();
+    await expect(tile(page, 0).locator('.tile-text')).toHaveText(/^Amazing love!/);
+
+    // Restoring the same file again changes nothing.
+    await chooseFile(page, file);
+    await expect(page.locator('#restore-summary')).toHaveText('No new songs, 2 songs you already have.');
+    await expect(page.locator('#restore-existing-text')).toHaveText('They’re exactly the same as yours, so they will be left as they are.');
+    await expect(page.locator('#restore-extra')).toBeHidden();
+    await button(page, 'Restore songs').click();
+    await expect(page.locator('#file-note')).toHaveText('Nothing needed to change. You already have these songs.');
+    await page.reload();
+    await expect(page.locator('.song')).toHaveCount(8);
+  });
+
+  test('songs you already have: keep mine, use the backup’s or keep both, and nothing else is touched', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await addSong(page, 'Keep Me', 'Not in the file');
+    await addSong(page, 'Same', 'Same words');
+    await addSong(page, 'Mine', 'My words');
+    await addSong(page, 'Mine Too', 'My other words');
+    await songButton(page, 'Mine Too').click();
+    await tile(page, 0).click();
+    await expect(tvText(tv)).toHaveText('My other words');
+
+    const file = fileWith([
+      song('a', 'New One', 'Hello'),
+      song('b', 'New Two', 'Hi'),
+      song('c', 'Same', 'Same words'),
+      song('d', 'mine', 'Backup words'),
+      song('e', 'Mine Too', 'Backup other words'),
+      { id: 'f', title: 'Broken' },
+    ]);
+    await chooseFile(page, file);
+    await expect(page.locator('#restore-summary')).toHaveText('2 new songs, 3 songs you already have.');
+    await expect(page.locator('#restore-existing-text')).toHaveText(
+      '1 song is exactly the same as yours and will be left alone. For the other 2, choose what to do with each one:'
+    );
+    await expect(page.locator('#restore-extra')).toHaveText('1 song in the file couldn’t be read, so it will be skipped.');
+    await expect(page.locator('.conflict-title')).toHaveText(['mine', 'Mine Too']);
+    const pressed = (i) => page.locator('.conflict').nth(i).locator('[aria-pressed="true"]');
+    await expect(pressed(0)).toHaveText('Keep mine');
+    await expect(pressed(1)).toHaveText('Keep mine');
+
+    // Cancel changes nothing.
+    await button(page, 'Cancel').click();
+    await expect(page.locator('#main')).toBeVisible();
+    await expect(page.locator('.song')).toHaveCount(12);
+
+    await chooseFile(page, file);
+    await page.locator('#restore-all').getByRole('button', { name: 'Use the backup’s' }).click();
+    await expect(pressed(0)).toHaveText('Use the backup’s');
+    await expect(pressed(1)).toHaveText('Use the backup’s');
+    await page.locator('.conflict').nth(0).getByRole('button', { name: 'Keep both' }).click();
+    await expect(pressed(0)).toHaveText('Keep both');
+    await button(page, 'Restore songs').click();
+
+    await expect(page.locator('#file-note')).toHaveText('Done. We added 3 songs and replaced 1 song.');
+    await expect(page.locator('.song')).toHaveCount(15);
+    for (const name of ['Keep Me', 'New One', 'New Two', 'mine (from backup)']) await expect(songButton(page, name)).toHaveCount(1);
+    await expect(page.locator('.song-name', { hasText: /^Same$/ })).toHaveCount(1);
+    await songButton(page, 'Keep Me').click();
+    await expect(tile(page, 0).locator('.tile-text')).toHaveText('Not in the file');
+    await page.locator('.song-name', { hasText: /^Mine$/ }).click();
+    await expect(tile(page, 0).locator('.tile-text')).toHaveText('My words');
+    // The song on the TV was replaced, so the TV shows the new words.
+    await expect(tvText(tv)).toHaveText('Backup other words');
+    await expect(songButton(page, 'Mine Too')).toHaveClass(/is-live/);
+  });
+
+  test('files that can’t be used are explained in plain words', async ({ page }) => {
+    await openControl(page);
+    const problem = page.locator('#restore-problem');
+    const cases = [
+      ['not json at all', 'This file can’t be read. Pick a backup file saved from Worship Presenter. Its name ends in .json.'],
+      [{ hello: 'world' }, 'This file isn’t a Worship Presenter backup. Pick a file saved with Back up my songs or Share songs.'],
+      [fileWith([], { version: 2 }), 'This backup was made by a newer version of Worship Presenter. Reload this page to get the newest version, then try again.'],
+      [fileWith([], { songs: 'nope' }), 'This backup file is damaged, so it can’t be used. Try another backup.'],
+      [fileWith([]), 'This file has no songs in it.'],
+      [fileWith([{ id: 'x', title: '' }]), 'None of the songs in this file could be read, so nothing can be restored.'],
+    ];
+    for (const [contents, message] of cases) {
+      await chooseFile(page, contents);
+      await expect(problem).toHaveText(message);
+      await expect(page.locator('#restore-plan')).toBeHidden();
+      await expect(button(page, 'Choose another file')).toBeVisible();
+    }
+    await button(page, 'Back to songs').click();
+    await expect(page.locator('#main')).toBeVisible();
+    await expect(page.locator('.song')).toHaveCount(8);
+  });
+
+  test('Share songs saves the ticked songs, and another group adds them with Restore', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await tile(page, 0).click();
+    await addSong(page, 'Our Song', 'Our words');
+
+    await button(page, 'Share songs').click();
+    await expect(page.locator('#songs-file-title')).toHaveText('Share songs');
+    await expect(page.locator('#main')).toBeHidden();
+    const go = page.locator('#share-go');
+    await expect(go).toBeDisabled();
+    await expect(go).toHaveText('Tick the songs to share');
+    await expect(page.locator('.share-song')).toHaveCount(9);
+
+    // Space on a tick box ticks it and doesn't move the TV.
+    await page.getByRole('checkbox', { name: 'Our Song' }).focus();
+    await page.keyboard.press('Space');
+    await expect(page.getByRole('checkbox', { name: 'Our Song' })).toBeChecked();
+    await expect(tvText(tv)).toHaveText(/^Amazing grace/);
+    await page.getByRole('checkbox', { name: 'Be Thou My Vision' }).check();
+    await expect(go).toHaveText('Save 2 songs to a file');
+    await button(page, 'Tick all').click();
+    await expect(go).toHaveText('Save 9 songs to a file');
+    await button(page, 'Untick all').click();
+    await expect(go).toBeDisabled();
+    await page.getByRole('checkbox', { name: 'Our Song' }).check();
+    await page.getByRole('checkbox', { name: 'Be Thou My Vision' }).check();
+
+    const { name, file } = await saveFileFrom(page, go);
+    expect(name).toBe(`shared-songs-${await today(page)}.json`);
+    expect(file).toMatchObject({ app: 'Worship Presenter', kind: 'shared', version: 1 });
+    expect(file.songs.map((s) => s.title)).toEqual(['Be Thou My Vision', 'Our Song']);
+    await expect(page.locator('#main')).toBeVisible();
+    await expect(page.locator('#file-note')).toHaveText(
+      `Saved 2 songs as ${name}. Send this file to the other group. They add the songs by pressing Restore from backup.`
+    );
+
+    await freshBrowser(page);
+    await chooseFile(page, file, name);
+    await expect(page.locator('#songs-file-title')).toHaveText('Add shared songs');
+    await expect(page.locator('#restore-summary')).toHaveText('1 new song, 1 song you already have.');
+    await expect(page.locator('#restore-existing-text')).toHaveText('It’s exactly the same as yours, so it will be left as it is.');
+    await button(page, 'Add songs').click();
+    await expect(page.locator('#file-note')).toHaveText('Done. We added 1 song.');
+    await expect(page.locator('.song')).toHaveCount(9);
+    await songButton(page, 'Our Song').click();
+    await expect(tile(page, 0).locator('.tile-text')).toHaveText('Our words');
+  });
+
+  test('a shared song you already have can be kept as a second copy', async ({ page }) => {
+    await openControl(page);
+    await chooseFile(page, fileWith([song('x', 'Amazing Grace', 'Different words')], { kind: 'shared' }));
+    const conflict = page.locator('.conflict');
+    await expect(conflict.getByRole('button', { name: 'Use the shared one' })).toHaveAttribute('aria-pressed', 'true');
+    await conflict.getByRole('button', { name: 'Keep both' }).click();
+    await button(page, 'Add songs').click();
+    await expect(page.locator('.song')).toHaveCount(9);
+    await expect(songButton(page, 'Amazing Grace (shared)')).toHaveCount(1);
+  });
+
+  test('asks the browser to keep the songs once they change', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.persistCalls = 0;
+      Object.defineProperty(navigator, 'storage', {
+        value: {
+          persisted: async () => false,
+          persist: async () => ++window.persistCalls > 0,
+          estimate: async () => ({}),
+        },
+      });
+    });
+    await openControl(page);
+    expect(await page.evaluate(() => window.persistCalls)).toBe(0);
+    await addSong(page, 'Our Song', 'Words');
+    await expect.poll(() => page.evaluate(() => window.persistCalls)).toBe(1);
+  });
+
+  test('a gentle reminder appears a week after changes with no backup, and can be put away', async ({ page }) => {
+    const reminder = page.locator('#reminder');
+    const stored = () => page.evaluate((key) => JSON.parse(localStorage.getItem(key)), REMINDER_KEY);
+    const setStored = (value) => page.evaluate(([key, v]) => localStorage.setItem(key, JSON.stringify(v)), [REMINDER_KEY, value]);
+
+    await openControl(page);
+    await expect(reminder).toBeHidden();
+    expect(await stored()).toBeNull();
+
+    await addSong(page, 'Our Song', 'Words');
+    const { changedAt } = await stored();
+    expect(Date.now() - changedAt).toBeLessThan(60_000);
+    await page.reload();
+    await expect(page.locator('.song')).toHaveCount(9);
+    await expect(reminder).toBeHidden();
+
+    await setStored({ changedAt: Date.now() - 8 * DAY });
+    await page.reload();
+    await expect(reminder).toBeVisible();
+    await expect(reminder.locator('p')).toHaveText(
+      'You’ve changed your songs but haven’t saved a backup for over a week. A backup file keeps them safe if this browser is ever cleared.'
+    );
+    await reminder.getByRole('button', { name: 'Not now' }).click();
+    await expect(reminder).toBeHidden();
+    await page.reload();
+    await expect(page.locator('.song')).toHaveCount(9);
+    await expect(reminder).toBeHidden();
+
+    // It comes back a week after it was put away, until a backup is made.
+    await setStored({ ...(await stored()), dismissedAt: Date.now() - 8 * DAY });
+    await page.reload();
+    await expect(reminder).toBeVisible();
+    await saveFileFrom(page, reminder.getByRole('button', { name: 'Back up my songs' }));
+    await expect(reminder).toBeHidden();
+    expect((await stored()).changedAt).toBeUndefined();
+    await page.reload();
+    await expect(page.locator('.song')).toHaveCount(9);
+    await expect(reminder).toBeHidden();
+
+    // Songs added before backups existed count as changes not yet backed up.
+    await page.evaluate((key) => localStorage.removeItem(key), REMINDER_KEY);
+    await page.reload();
+    await expect.poll(async () => (await stored())?.changedAt).toBeGreaterThan(0);
+  });
+
+  test('restore and share work at phone width', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openControl(page);
+    const noSideScroll = () => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
+    await button(page, 'Share songs').click();
+    expect(await noSideScroll()).toBe(true);
+    await button(page, 'Cancel').click();
+    await chooseFile(page, fileWith([song('d', 'Amazing Grace', 'Backup words'), song('e', 'Be Thou My Vision', 'X')]));
+    await expect(page.locator('#restore-all')).toBeVisible();
+    expect(await noSideScroll()).toBe(true);
+    for (const id of ['#previous', '#next', '#black', '#clear']) await expect(page.locator(id)).toBeInViewport();
+    await button(page, 'Restore songs').scrollIntoViewIfNeeded();
+    await expect(button(page, 'Restore songs')).toBeInViewport();
   });
 });

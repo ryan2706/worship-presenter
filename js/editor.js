@@ -3,7 +3,7 @@
 // the callbacks passed to createEditor do that.
 
 import { keepFitted } from './fit-text.js';
-import { isEditedSample, slidesFor } from './library.js';
+import { isEditedSample, newSongId, slidesFor } from './library.js';
 import { formatLyrics, joinSingleLines, looksLikeOneLinePerSlide, parseLyrics } from './lyrics.js';
 
 const LONG_SLIDE_LINES = 6;
@@ -138,7 +138,7 @@ export function createEditor({ onOpen, onClose, onSave, onDelete, onRestore }) {
     if (!title) return showError(el.title, el.titleError, 'Give the song a title.');
     if (!sections.length) return showError(el.lyrics, el.lyricsError, 'Type the words of at least one slide.');
 
-    const changed = song ? { ...song } : { id: newId() };
+    const changed = song ? { ...song } : { id: newSongId() };
     delete changed.order;
     delete changed.edited;
     Object.assign(changed, { title, sections }, order ? { order } : {});
@@ -235,8 +235,4 @@ function showError(field, message, text) {
 function hideError(field, message) {
   message.hidden = true;
   field.removeAttribute('aria-invalid');
-}
-
-function newId() {
-  return crypto.randomUUID?.() ?? `song-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
