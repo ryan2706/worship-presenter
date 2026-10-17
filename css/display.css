@@ -46,6 +46,30 @@ body.waiting .text {
   visibility: hidden;
 }
 
+/* The Bible reference and translation, small at the bottom. */
+body.has-caption .screen {
+  padding-bottom: 14vh;
+}
+
+.caption {
+  position: fixed;
+  left: 6vw;
+  right: 6vw;
+  bottom: 5vh;
+  margin: 0;
+  color: var(--mist);
+  font-size: 4.5vh;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+}
+
+body.black .caption,
+body.waiting .caption,
+body:not(.has-caption) .caption {
+  visibility: hidden;
+}
+
 /* Shown only before the first slide arrives. */
 .waiting-note {
   position: fixed;

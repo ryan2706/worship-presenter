@@ -37,6 +37,13 @@ Volunteers who are not technical.
 - `js/sample-songs.js`: the sample hymns that are added the first time the app runs.
 - `js/backup-file.js`: makes and checks backup and shared-song files, and works out what a restore would change. No page code.
 - `js/backup.js`: the Back up, Restore and Share buttons and screens, and the backup reminder.
+- `js/bible-books.js`: the 66 books in order, with their short forms.
+- `js/bible-reference.js`: reads typed references ("Ps 23", "1 Cor 13:4-7"), writes them neatly, and picks the verses out of a Bible file. No page code.
+- `js/bibles.js`: the list of translations. The only place translations are named.
+- `js/passage.js`: turns a passage's verses into slides. No page code.
+- `js/bible-panel.js`: the Bible tab's form (reference, translation, two verses per slide).
+- `data/kjv.json`, `data/web.json`: the Bible text. See `data/README.md` for sources and licences.
+- `tools/make-bible-data.py`: remakes the Bible files from eBible.org. Run by hand; it is not a build step.
 
 To try it locally, run `python3 -m http.server 8000` in the project folder and open http://localhost:8000. ES modules don't load from `file://`.
 
@@ -54,7 +61,7 @@ The browser checks for every phase live in `tests/presenter.spec.js` and use Pla
 The channel name is `worship-presenter`.
 
 - Control to Display:
-  - `{type:'state', text, black}` is always the full picture, so a Display that reloads catches up.
+  - `{type:'state', text, caption, black}` is always the full picture, so a Display that reloads catches up. `caption` is the Bible reference and translation shown small at the bottom of the TV, such as "John 3:16 · KJV". It is `''` for songs, and when the text is cleared.
   - `{type:'ping'}` asks whether a Display is open. It is sent when the Control page loads and after any Display closes.
 - Display to Control:
   - `{type:'hello'}` is sent on load and in reply to `ping`.
@@ -98,6 +105,30 @@ Everything stays on this device unless the volunteer presses a button that saves
 - The **Keep your songs safe** box (Back up, Restore, Share) sits under the song list. On phones it moves below the slides, so the slides come first.
 - After any change to the songs, the app asks the browser to keep its storage (`navigator.storage.persist`).
 - `localStorage` key `worship-presenter:backup` holds `changedAt` (first change since the last backup) and `dismissedAt`. A reminder shows when changes have gone 7 days without a backup, but only while no slide has been put on the TV in this session (so it never shows during worship). **Not now** hides it for 7 days. Songs that existed before this feature count as a change.
+
+### Bible
+
+- The left side has two big tabs, **Songs** and **Bible**. A tab that isn't open shows "On the TV" when what's on the TV is in it. Keep your songs safe only shows with the Songs tab.
+- **Translations:** KJV (1769) and WEB (World English Bible Updated, `engwebu`, with "the LORD"). Both are public domain, from eBible.org. Each Bible file (about 4 MB, 1.2 MB compressed) is only fetched the first time a passage in it is shown.
+- **Adding a translation** means adding one line to `TRANSLATIONS` in `js/bibles.js`. A translation is `{id, short, name, notice, getVerses(ref)}`. `getVerses` returns `[{chapter, verse, text}]` or throws an Error with a plain message. The picker, captions and notice line are built from these fields. ESV will be a `proxyBible` in `js/bible-esv.js` that asks the Cloudflare Worker for verses and shows Crossway's notice.
+- **Only references are saved** (`sessionStorage`), never the words, so a translation with storage limits fits.
+- **References** are forgiving:
+  - short forms ("Jn", "1 Cor", "Ps"), Roman numerals and "1st"/"First";
+  - small spelling mistakes ("Jhon", "Mathew", "Phillipians");
+  - "3 16" or "3.16" for 3:16, any dash, "to";
+  - whole chapters, chapter ranges ("Ps 23-24"), verse ranges, and ranges across chapters;
+  - in one-chapter books, "Jude 3" is verse 3.
+  Lists ("3:16, 18") are not supported. Problems are explained in plain words, such as "John has 21 chapters." or "Did you mean Judges or Jude?"
+- **Slides:**
+  - One verse per slide, labelled "Verse 16".
+  - **Two short verses per slide** (remembered in `localStorage` `worship-presenter:bible`, with the last translation) joins two verses of up to 110 characters each, up to 200 in total.
+  - A verse over 200 characters is split into roughly equal parts of up to 200 characters, labelled "Verse 9 (part 2 of 3)". Breaks come at a sentence end, then `; :`, then a comma, then between words.
+  - Changing the layout keeps the TV on the same verse.
+  - Verses the translation leaves empty (5 in the WEB) are skipped.
+- **A passage is an item like a song.** Next, Previous, Black screen, Clear text, reloads, "On the TV" marks and **Go to that passage** all behave the same.
+  - The Bible tab lists this session's passages, newest first, up to 10. The passage on the TV always stays in the list.
+  - After a reload, only the passage on the TV and the one being viewed are loaded straight away.
+  - Showing a passage moves focus out of the reference box, so the arrow keys and Space move the slides again.
 
 ### Behaviour rules
 
@@ -152,3 +183,4 @@ Add one line per decision, newest at the bottom, with the date.
 - 2026-10-17: Backup, restore and sharing added. One JSON file format (`kind` backup or shared, `version` 1) for both, restored with the same button. Restore shows a summary and asks about each song you already have; it never deletes songs not in the file. Storage persistence is requested after changes, and a dismissable reminder appears when changes go 7 days without a backup.
 - 2026-10-17: On phones, Keep your songs safe moves below the slides. The backup reminder only shows while no slide has been put on the TV in this session.
 - 2026-10-17: Bible text: KJV (1769) and WEB Updated (`engwebu`, "the LORD"), both public domain, converted once from eBible.org's USFM by `tools/make-bible-data.py` into `data/kjv.json` and `data/web.json`. USFM is used because it marks Psalm titles separately, so they never join verse 1. Footnotes, headings, Psalm titles and the Apocrypha are left out; verse words are kept exactly.
+- 2026-10-17: Bible tab added. Passages are items like songs (same Next, Black screen, reload and "On the TV" rules). One verse per slide by default, with an option for two short verses. Verses over 200 characters are split across slides. The TV shows the reference and translation small at the bottom (`caption` in the state message). Translations are listed only in `js/bibles.js`, and only references are saved, so ESV can be added later as one more entry.

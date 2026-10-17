@@ -314,6 +314,158 @@ ol {
   display: none;
 }
 
+/* The translation after a passage's reference in the list. */
+.song-detail {
+  color: var(--mist);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+/* Songs and Bible: two big tabs at the top of the left side. */
+
+.tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.tab {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem 0.5rem;
+  min-height: 3.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--dusk-edge);
+  border-radius: 0.75rem;
+  background: transparent;
+  color: var(--mist);
+  font: 700 1.15rem/1.2 var(--font);
+  cursor: pointer;
+}
+
+.tab:hover {
+  border-color: var(--mist);
+  color: var(--paper);
+}
+
+.tab:focus-visible {
+  outline: 3px solid var(--paper);
+  outline-offset: 3px;
+}
+
+.tab[aria-pressed="true"] {
+  border-color: var(--paper);
+  background: var(--paper);
+  color: var(--evening);
+}
+
+.tab-live {
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  background: var(--candle);
+  color: var(--black);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.tab:not(.is-live) .tab-live {
+  display: none;
+}
+
+.tab-panel[hidden] {
+  display: none;
+}
+
+/* The Bible tab's form. */
+
+.bible-form {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.bible-form .btn-primary {
+  justify-self: start;
+}
+
+.translations {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.translation {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  min-height: 3.25rem;
+  padding: 0.6rem 1rem;
+  border: 2px solid var(--dusk-edge);
+  border-radius: 0.75rem;
+  background: transparent;
+  color: var(--mist);
+  font: 1rem/1.25 var(--font);
+  text-align: left;
+  cursor: pointer;
+}
+
+.translation:hover {
+  border-color: var(--mist);
+  color: var(--paper);
+}
+
+.translation:focus-visible {
+  outline: 3px solid var(--paper);
+  outline-offset: 3px;
+}
+
+.translation[aria-pressed="true"] {
+  border-color: var(--paper);
+  background: var(--dusk);
+  color: var(--paper);
+}
+
+.translation[aria-pressed="true"]::before {
+  content: "✓";
+  font-weight: 700;
+}
+
+.translation-short {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.tick {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2.75rem;
+  cursor: pointer;
+}
+
+.tick input {
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  accent-color: var(--paper);
+}
+
+.passages-title {
+  margin-top: 0.5rem;
+}
+
+.passages {
+  grid-template-columns: 1fr;
+}
+
+.passage-notice {
+  margin-bottom: 1rem;
+  color: var(--mist);
+  font-size: 0.95rem;
+}
+
 .panel-head,
 .song-head {
   display: flex;
@@ -469,6 +621,27 @@ textarea:focus-visible {
 
 .tile:hover .tile-screen {
   border-color: var(--mist);
+}
+
+.tile-screen.has-ref {
+  /* Room for the reference at the bottom, as on the TV. */
+  padding-bottom: 8%;
+  container-type: inline-size;
+}
+
+.tile-ref {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 3%;
+  color: var(--mist);
+  font-size: 2.5cqw;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tile-text {

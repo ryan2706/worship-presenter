@@ -50,31 +50,69 @@
   </section>
 
   <main id="main" class="main">
-    <section class="songs-panel" aria-labelledby="songs-title">
-      <div class="panel-head">
-        <h2 id="songs-title" class="panel-title">Songs</h2>
-        <button id="add-song" class="btn btn-small" type="button">+ Add song</button>
+    <section class="songs-panel" aria-label="Songs and Bible">
+      <div class="tabs" role="group" aria-label="Show">
+        <button id="tab-songs" class="tab" type="button" aria-pressed="true" aria-controls="songs-tab">
+          <span class="tab-name">Songs</span>
+          <span class="tab-live">On the TV</span>
+        </button>
+        <button id="tab-bible" class="tab" type="button" aria-pressed="false" aria-controls="bible-tab">
+          <span class="tab-name">Bible</span>
+          <span class="tab-live">On the TV</span>
+        </button>
       </div>
-      <label class="search">
-        <span class="visually-hidden">Search songs</span>
-        <input id="search" type="search" placeholder="Search songs: title or words" autocomplete="off" enterkeyhint="search">
-      </label>
-      <ul id="songs" class="songs"></ul>
-      <p id="no-match" class="no-match" role="status" hidden></p>
-      <button id="bring-back" class="link-button" type="button" hidden>Bring back deleted sample songs</button>
 
-      <div id="keep-safe" class="keep-safe" role="group" aria-labelledby="keep-safe-title">
-        <h3 id="keep-safe-title" class="panel-title">Keep your songs safe</h3>
-        <p class="keep-safe-help">
-          Your songs are saved in this browser only. A backup file keeps them safe and moves them to another computer.
-        </p>
-        <div class="keep-safe-buttons">
-          <button id="backup" class="btn btn-small" type="button">Back up my songs</button>
-          <button id="restore" class="btn btn-small" type="button">Restore from backup</button>
-          <button id="share" class="btn btn-small" type="button">Share songs</button>
+      <div id="songs-tab" class="tab-panel">
+        <div class="panel-head">
+          <h2 id="songs-title" class="visually-hidden">Songs</h2>
+          <button id="add-song" class="btn btn-small" type="button">+ Add song</button>
         </div>
-        <input id="restore-file" type="file" accept=".json,application/json" hidden>
-        <p id="file-note" class="file-note" role="status" hidden></p>
+        <label class="search">
+          <span class="visually-hidden">Search songs</span>
+          <input id="search" type="search" placeholder="Search songs: title or words" autocomplete="off" enterkeyhint="search">
+        </label>
+        <ul id="songs" class="songs"></ul>
+        <p id="no-match" class="no-match" role="status" hidden></p>
+        <button id="bring-back" class="link-button" type="button" hidden>Bring back deleted sample songs</button>
+
+        <div id="keep-safe" class="keep-safe" role="group" aria-labelledby="keep-safe-title">
+          <h3 id="keep-safe-title" class="panel-title">Keep your songs safe</h3>
+          <p class="keep-safe-help">
+            Your songs are saved in this browser only. A backup file keeps them safe and moves them to another computer.
+          </p>
+          <div class="keep-safe-buttons">
+            <button id="backup" class="btn btn-small" type="button">Back up my songs</button>
+            <button id="restore" class="btn btn-small" type="button">Restore from backup</button>
+            <button id="share" class="btn btn-small" type="button">Share songs</button>
+          </div>
+          <input id="restore-file" type="file" accept=".json,application/json" hidden>
+          <p id="file-note" class="file-note" role="status" hidden></p>
+        </div>
+      </div>
+
+      <div id="bible-tab" class="tab-panel" hidden>
+        <h2 id="bible-title" class="visually-hidden">Bible</h2>
+        <form id="bible-form" class="bible-form" novalidate>
+          <div class="field">
+            <label for="bible-ref" class="field-label">Bible reference</label>
+            <input id="bible-ref" type="text" placeholder="e.g. John 3:16-18, Ps 23, 1 Cor 13:4-7"
+              autocomplete="off" autocapitalize="words" spellcheck="false" enterkeyhint="go" aria-describedby="bible-error">
+          </div>
+          <div class="field">
+            <span id="bible-translation-label" class="field-label">Translation</span>
+            <div id="bible-translations" class="translations" role="group" aria-labelledby="bible-translation-label"></div>
+          </div>
+          <label class="tick">
+            <input id="bible-two" type="checkbox">
+            <span>Two short verses per slide</span>
+          </label>
+          <p id="bible-error" class="field-error" role="alert" hidden></p>
+          <button id="bible-show" class="btn btn-primary" type="submit">Show verses</button>
+        </form>
+
+        <h3 class="panel-title passages-title">Passages</h3>
+        <ul id="passages" class="songs passages"></ul>
+        <p id="no-passages" class="no-match">Passages you show will be listed here.</p>
       </div>
     </section>
 
@@ -83,6 +121,7 @@
         <h2 id="song-title" class="song-title">Loading songs…</h2>
         <button id="edit-song" class="btn btn-small" type="button" hidden>Edit song</button>
       </div>
+      <p id="passage-notice" class="passage-notice" hidden></p>
       <div id="elsewhere" class="elsewhere" hidden>
         <p id="elsewhere-text"></p>
         <button id="go-live-song" class="btn" type="button">Go to that song</button>

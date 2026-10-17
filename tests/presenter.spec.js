@@ -3,6 +3,7 @@
 // Phase 2: the song library and switching between songs.
 // Phase 3: adding, editing, deleting and searching songs.
 // Phase 4: backing up, restoring and sharing songs, and the backup reminder.
+// Phase 5: the phone layout and reminder fixes, and Bible verses.
 //
 // Every test gets a fresh browser profile, so storage starts empty and the
 // sample songs are added on first load.
@@ -1168,7 +1169,7 @@ test.describe('Phase 5: small fixes', () => {
   test('on a phone, Keep your songs safe sits below the slides', async ({ page }) => {
     await openControl(page);
     // Wide screens: under the song list.
-    expect(await page.locator('#keep-safe').evaluate((el) => el.parentElement.classList.contains('songs-panel'))).toBe(true);
+    expect(await page.locator('#keep-safe').evaluate((el) => el.parentElement.id)).toBe('songs-tab');
 
     await page.setViewportSize({ width: 390, height: 844 });
     await expect.poll(() => page.locator('#keep-safe').evaluate((el) => el.previousElementSibling?.className)).toBe('slides-panel');
@@ -1178,7 +1179,7 @@ test.describe('Phase 5: small fixes', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
     await page.setViewportSize({ width: 1280, height: 800 });
-    await expect.poll(() => page.locator('#keep-safe').evaluate((el) => el.parentElement.className)).toBe('songs-panel');
+    await expect.poll(() => page.locator('#keep-safe').evaluate((el) => el.parentElement.id)).toBe('songs-tab');
   });
 
   test('the backup reminder only shows while nothing is on the TV', async ({ page }) => {
@@ -1195,5 +1196,349 @@ test.describe('Phase 5: small fixes', () => {
     await expect(page.locator('.song')).toHaveCount(8);
     await expectLiveTile(page, 0);
     await expect(reminder).toBeHidden();
+  });
+});
+
+test.describe('Phase 5: Bible verses', () => {
+  const button = (page, name) => page.getByRole('button', { name, exact: true });
+  const tvCaption = (tv) => tv.locator('#caption');
+  const tileText = (page, i) => tile(page, i).locator('.tile-text');
+
+  // Types a reference on the Bible tab and shows it. Picking a translation
+  // shows the typed reference straight away; otherwise Enter does.
+  async function showPassage(page, reference, title, translation) {
+    await page.locator('#tab-bible').click();
+    await page.locator('#bible-ref').fill(reference);
+    if (translation) await page.locator(`.translation[data-id="${translation}"]`).click();
+    else await page.locator('#bible-ref').press('Enter');
+    await expect(page.locator('#song-title')).toHaveText(title);
+  }
+
+  test('references are read the way people type them', async ({ page }) => {
+    await openControl(page);
+    const results = await page.evaluate(async () => {
+      const { parseReference, formatReference } = await import('/js/bible-reference.js');
+      const typed = [
+        'John 3:16-18', 'jn 3 16', 'Ps 23', 'psalm 23:1-6', '1 Cor 13:4-7', 'I Corinthians 13', '1st cor 13',
+        'Jhon 3:16', 'Revelations 21:4', 'Song of Songs 2', 'Jude 3', 'John 3:16–4:2', 'phil 4:13', 'Mathew 5:3-12',
+        'Phillipians 4:6-7', '1 ch 16', 'Ps. 23', 'John chapter 3 verse 16', 'Isaiah 40:28 to 31', 'Ps 23-24',
+        '', 'Jhonn 3', 'Ju 3', 'John 3:16, 18', 'Peter 1:3', 'John 3:18-16', 'Rev',
+      ];
+      return Object.fromEntries(
+        typed.map((t) => {
+          const r = parseReference(t);
+          return [t, r.ok ? formatReference(r.ref) : `! ${r.message}`];
+        })
+      );
+    });
+    expect(results).toEqual({
+      'John 3:16-18': 'John 3:16–18',
+      'jn 3 16': 'John 3:16',
+      'Ps 23': 'Psalm 23',
+      'psalm 23:1-6': 'Psalm 23:1–6',
+      '1 Cor 13:4-7': '1 Corinthians 13:4–7',
+      'I Corinthians 13': '1 Corinthians 13',
+      '1st cor 13': '1 Corinthians 13',
+      'Jhon 3:16': 'John 3:16',
+      'Revelations 21:4': 'Revelation 21:4',
+      'Song of Songs 2': 'Song of Solomon 2',
+      'Jude 3': 'Jude 3',
+      'John 3:16–4:2': 'John 3:16–4:2',
+      'phil 4:13': 'Philippians 4:13',
+      'Mathew 5:3-12': 'Matthew 5:3–12',
+      'Phillipians 4:6-7': 'Philippians 4:6–7',
+      '1 ch 16': '1 Chronicles 16',
+      'Ps. 23': 'Psalm 23',
+      'John chapter 3 verse 16': 'John 3:16',
+      'Isaiah 40:28 to 31': 'Isaiah 40:28–31',
+      'Ps 23-24': 'Psalms 23–24',
+      '': '! Type a Bible reference, like John 3:16.',
+      'Jhonn 3': '! We couldn’t find a book called ‘Jhonn’. Try one like John 3:16.',
+      'Ju 3': '! Did you mean Judges or Jude?',
+      'John 3:16, 18': '! Lists of verses aren’t supported yet. Show one range at a time, like John 3:16-18.',
+      'Peter 1:3': '! Did you mean 1 Peter or 2 Peter?',
+      'John 3:18-16': '! The second number should come after the first, like John 3:16-18.',
+      'Rev': '! Which chapter of Revelation? For example, Revelation 1.',
+    });
+  });
+
+  test('each Bible loads only when it is first needed', async ({ page }) => {
+    const loaded = [];
+    page.on('request', (request) => {
+      if (request.url().includes('/data/')) loaded.push(new URL(request.url()).pathname);
+    });
+    await openControl(page);
+    await page.locator('#tab-bible').click();
+    await expect(page.locator('.translation')).toHaveText(['KJV King James Version', 'WEB World English Bible']);
+    expect(loaded).toEqual([]);
+
+    await showPassage(page, 'John 3:16-18', 'John 3:16–18 (KJV)');
+    expect(loaded).toEqual(['/data/kjv.json']);
+    await showPassage(page, 'Ps 23', 'Psalm 23 (KJV)');
+    expect(loaded).toEqual(['/data/kjv.json']);
+    await showPassage(page, 'Ps 23', 'Psalm 23 (WEB)', 'web');
+    expect(loaded).toEqual(['/data/kjv.json', '/data/web.json']);
+  });
+
+  test('a passage shows as one slide per verse, with the reference at the bottom of the TV', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await showPassage(page, 'John 3:16-18', 'John 3:16–18 (KJV)');
+    await expect(page.locator('.tile-label')).toHaveText(['Verse 16', 'Verse 17', 'Verse 18']);
+    await expect(tileText(page, 0)).toHaveText(/^For God so loved the world, that he gave his only begotten Son/);
+    await expect(tile(page, 0).locator('.tile-ref')).toHaveText('John 3:16 · KJV');
+    await expect(page.locator('#edit-song')).toBeHidden();
+
+    await tile(page, 0).click();
+    await expect(tvText(tv)).toHaveText(/^For God so loved the world, that he gave his only begotten Son/);
+    await expect(tvCaption(tv)).toHaveText('John 3:16 · KJV');
+    await expect(tvCaption(tv)).toBeVisible();
+    await expect(page.locator('#live-note')).toHaveText('The TV is showing John 3:16–18 (KJV), Verse 16 (slide 1 of 3).');
+
+    // Looking at the same passage in the WEB doesn't change the TV.
+    await page.locator('.translation[data-id="web"]').click();
+    await expect(page.locator('#song-title')).toHaveText('John 3:16–18 (WEB)');
+    await expect(tileText(page, 0)).toHaveText(/^For God so loved the world, that he gave his only born Son/);
+    await expect(tvCaption(tv)).toHaveText('John 3:16 · KJV');
+    await expect(page.locator('#passages .song')).toHaveCount(2);
+
+    // A song has no caption.
+    await page.locator('#tab-songs').click();
+    await songButton(page, 'Amazing Grace').click();
+    await tile(page, 0).click();
+    await expect(tvText(tv)).toHaveText(/^Amazing grace/);
+    await expect(tvCaption(tv)).toHaveText('');
+    await expect(tvCaption(tv)).toBeHidden();
+  });
+
+  test('Psalm titles are not part of verse 1 in either translation', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    const expected = {
+      kjv: {
+        'Psalm 23:1': 'The LORD is my shepherd; I shall not want.',
+        'Psalm 51:1':
+          'Have mercy upon me, O God, according to thy lovingkindness: according unto the multitude of thy tender mercies blot out my transgressions.',
+      },
+      web: {
+        'Psalm 23:1': 'The LORD is my shepherd; I shall lack nothing.',
+        'Psalm 51:1':
+          'Have mercy on me, God, according to your loving kindness. According to the multitude of your tender mercies, blot out my transgressions.',
+      },
+    };
+    for (const [translation, verses] of Object.entries(expected)) {
+      for (const [reference, words] of Object.entries(verses)) {
+        await showPassage(page, reference, `${reference} (${translation.toUpperCase()})`, translation);
+        await expect(page.locator('.tile')).toHaveCount(1);
+        await expect(tileText(page, 0)).toHaveText(words);
+        await tile(page, 0).click();
+        await expect(tvText(tv)).toHaveText(words);
+        await expect(tvCaption(tv)).toHaveText(`${reference} · ${translation.toUpperCase()}`);
+      }
+    }
+  });
+
+  test('problems with a reference are explained in plain words', async ({ page }) => {
+    await openControl(page);
+    const error = page.locator('#bible-error');
+    await page.locator('#tab-bible').click();
+    await button(page, 'Show verses').click();
+    await expect(error).toHaveText('Type a Bible reference, like John 3:16.');
+    await page.locator('#bible-ref').fill('John 22');
+    await page.locator('#bible-ref').press('Enter');
+    await expect(error).toHaveText('John has 21 chapters.');
+    await page.locator('#bible-ref').fill('Psalm 23:7');
+    await page.locator('#bible-ref').press('Enter');
+    await expect(error).toHaveText('Psalm 23 has 6 verses.');
+    await page.locator('#bible-ref').fill('Jhonn 3');
+    await expect(error).toBeHidden();
+    await page.locator('#bible-ref').press('Enter');
+    await expect(error).toHaveText('We couldn’t find a book called ‘Jhonn’. Try one like John 3:16.');
+    await expect(page.locator('#bible-ref')).toHaveAttribute('aria-invalid', 'true');
+    // Nothing was shown, and typing never moved the TV.
+    await expect(page.locator('#passages .song')).toHaveCount(0);
+    await expect(page.locator('#live-note')).toHaveText('Nothing is on the TV yet. Pick a slide.');
+  });
+
+  test('two short verses can share a slide, and the TV keeps its verse when this changes', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await showPassage(page, 'Ps 23', 'Psalm 23 (KJV)');
+    await expect(page.locator('.tile')).toHaveCount(6);
+    await tile(page, 2).click();
+    await expect(tvText(tv)).toHaveText(/^He restoreth my soul/);
+
+    await page.locator('#bible-two').check();
+    await expect(page.locator('.tile-label')).toHaveText(['Verses 1–2', 'Verse 3', 'Verse 4', 'Verse 5', 'Verse 6']);
+    await expect(tile(page, 0).locator('.tile-ref')).toHaveText('Psalm 23:1–2 · KJV');
+    await expectLiveTile(page, 1);
+    await expect(tvText(tv)).toHaveText(/^He restoreth my soul/);
+
+    await tile(page, 0).click();
+    await expect(tvText(tv)).toHaveText('The LORD is my shepherd; I shall not want.\nHe maketh me to lie down in green pastures: he leadeth me beside the still waters.');
+    await expect(tvCaption(tv)).toHaveText('Psalm 23:1–2 · KJV');
+
+    // The choice is remembered.
+    await page.reload();
+    await expect(page.locator('#songs .song')).toHaveCount(8);
+    await expect(page.locator('#bible-two')).toBeChecked();
+    await expect(page.locator('.tile')).toHaveCount(5);
+    await page.locator('#bible-two').uncheck();
+    await expect(page.locator('.tile')).toHaveCount(6);
+    await expectLiveTile(page, 0);
+  });
+
+  test('a long verse is split across slides instead of getting tiny', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await tv.setViewportSize({ width: 800, height: 600 });
+    for (const translation of ['kjv', 'web']) {
+      await showPassage(page, 'Esther 8:9', `Esther 8:9 (${translation.toUpperCase()})`, translation);
+      await expect(page.locator('.tile-label')).toHaveText(['Verse 9 (part 1 of 3)', 'Verse 9 (part 2 of 3)', 'Verse 9 (part 3 of 3)']);
+      const texts = await page.locator('.tile-text').allTextContents();
+      for (const text of texts) expect(text.length).toBeLessThanOrEqual(200);
+      expect(texts.join(' ')).toMatch(/^Then .* their language\.$/);
+
+      for (let i = 0; i < 3; i += 1) {
+        await tile(page, i).click();
+        await expect(tvText(tv)).toHaveText(texts[i]);
+        await expect(tvCaption(tv)).toHaveText(`Esther 8:9 · ${translation.toUpperCase()}`);
+        const fit = await tv.evaluate(async () => {
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          const text = document.getElementById('text');
+          const caption = document.getElementById('caption').getBoundingClientRect();
+          const box = text.getBoundingClientRect();
+          return {
+            size: parseFloat(getComputedStyle(text).fontSize),
+            clear: box.bottom <= caption.top,
+            fits: text.scrollWidth <= text.clientWidth,
+          };
+        });
+        expect(fit.size, `part ${i + 1}`).toBeGreaterThanOrEqual(28);
+        expect(fit.clear, 'the words stay above the reference').toBe(true);
+        expect(fit.fits).toBe(true);
+      }
+    }
+  });
+
+  test('a passage works like a song for Next, Previous and the On the TV marks', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    // A song's last slide is on the TV, and a passage is being viewed.
+    await tile(page, 4).click();
+    await showPassage(page, 'John 3:16-18', 'John 3:16–18 (KJV)');
+    await expect(page.locator('#elsewhere')).toBeVisible();
+    await expect(page.locator('#tab-songs .tab-live')).toBeVisible();
+
+    // Next finishes the song, then starts the passage.
+    await page.keyboard.press('ArrowRight');
+    await expectLiveTile(page, 0);
+    await expect(tvText(tv)).toHaveText(/^For God so loved/);
+    await expect(tvCaption(tv)).toHaveText('John 3:16 · KJV');
+    await expect(page.locator('#elsewhere')).toBeHidden();
+    await expect(page.locator('#tab-songs .tab-live')).toBeHidden();
+    await expect(page.locator('#passages .song').first()).toHaveClass(/is-live/);
+
+    // Previous never leaves it; Next stops at its end.
+    await page.keyboard.press('ArrowLeft');
+    await expectLiveTile(page, 0);
+    await page.keyboard.press(' ');
+    await page.keyboard.press('PageDown');
+    await page.keyboard.press('ArrowRight');
+    await expectLiveTile(page, 2);
+    await expect(tvCaption(tv)).toHaveText('John 3:18 · KJV');
+
+    // Looking at a song: the TV stays on the passage, and both tabs say so.
+    await page.locator('#tab-songs').click();
+    await expect(page.locator('#tab-bible .tab-live')).toBeVisible();
+    await songButton(page, 'Rock of Ages').click();
+    await expect(page.locator('#elsewhere-text')).toHaveText(
+      'The TV is showing John 3:16–18 (KJV), Verse 18. Next keeps going through that passage, then starts this one.'
+    );
+    await page.keyboard.press('ArrowLeft');
+    await expect(tvCaption(tv)).toHaveText('John 3:17 · KJV');
+    await expect(page.locator('#live-note')).toHaveText('The TV is showing John 3:16–18 (KJV), Verse 17 (slide 2 of 3).');
+
+    // Go to that passage brings back the Bible tab and its slides.
+    await button(page, 'Go to that passage').click();
+    await expect(page.locator('#bible-tab')).toBeVisible();
+    await expect(page.locator('#tab-bible')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#song-title')).toHaveText('John 3:16–18 (KJV)');
+    await expectLiveTile(page, 1);
+    await expect(page.locator('#keep-safe')).toBeHidden();
+
+    // Next to the end of the passage, then on into the song being viewed.
+    await page.locator('#tab-songs').click();
+    await songButton(page, 'Rock of Ages').click();
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowRight');
+    await expect(tvText(tv)).toHaveText(/^Rock of Ages, cleft for me/);
+    await expect(tvCaption(tv)).toHaveText('');
+    await expect(songButton(page, 'Rock of Ages')).toHaveClass(/is-live/);
+  });
+
+  test('Black screen and Clear text hide the reference too', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await showPassage(page, 'Rom 8:28', 'Romans 8:28 (KJV)');
+    await tile(page, 0).click();
+    await expect(tvCaption(tv)).toBeVisible();
+
+    await page.keyboard.press('b');
+    await expect(tv.locator('body')).toHaveClass(/black/);
+    await expect(tvCaption(tv)).toBeHidden();
+    await expect(tile(page, 0).locator('.tile-live')).toHaveText('Black screen');
+    await page.keyboard.press('b');
+    await expect(tvCaption(tv)).toBeVisible();
+
+    await page.locator('#clear').click();
+    await expect(tvText(tv)).toHaveText('');
+    await expect(tvCaption(tv)).toHaveText('');
+    await expect(tile(page, 0).locator('.tile-live')).toHaveText('Text cleared');
+    await tile(page, 0).click();
+    await expect(tvCaption(tv)).toHaveText('Romans 8:28 · KJV');
+  });
+
+  test('a reload keeps the passage on the TV, the one being viewed and the open tab', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await showPassage(page, '1 Cor 13:4-7', '1 Corinthians 13:4–7 (KJV)');
+    await tile(page, 1).click();
+    await showPassage(page, 'Ps 121', 'Psalm 121 (WEB)', 'web');
+
+    await page.reload();
+    await expect(page.locator('#song-title')).toHaveText('Psalm 121 (WEB)');
+    await expect(page.locator('#bible-tab')).toBeVisible();
+    await expect(page.locator('#passages .song-name')).toHaveText(['Psalm 121 WEB', '1 Corinthians 13:4–7 KJV']);
+    await expect(page.locator('#passages .song').nth(0)).not.toHaveClass(/is-live/);
+    await expect(page.locator('#passages .song').nth(1)).toHaveClass(/is-live/);
+    await expect(page.locator('#live-note')).toHaveText('The TV is showing 1 Corinthians 13:4–7 (KJV), Verse 5 (slide 2 of 4).');
+    await expect(page.locator('#display-status')).toHaveText('TV window is open');
+    await expect(tvCaption(tv)).toHaveText('1 Corinthians 13:5 · KJV');
+
+    // Next goes on through the passage on the TV.
+    await page.keyboard.press('ArrowRight');
+    await expect(tvCaption(tv)).toHaveText('1 Corinthians 13:6 · KJV');
+
+    // A passage from the list loads when picked.
+    await page.locator('#passages .song', { hasText: '1 Corinthians' }).click();
+    await expectLiveTile(page, 2);
+
+    // A reloaded TV catches up, reference and all.
+    await tv.reload();
+    await expect(tvText(tv)).toHaveText(/^Rejoiceth not in iniquity/);
+    await expect(tvCaption(tv)).toHaveText('1 Corinthians 13:6 · KJV');
+  });
+
+  test('the Bible tab works at phone width', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openControl(page);
+    await showPassage(page, 'John 3:16-18', 'John 3:16–18 (KJV)');
+    await expect(page.locator('#song-title')).toBeInViewport();
+    await expect(page.locator('#keep-safe')).toBeHidden();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    for (const id of ['#previous', '#next', '#black', '#clear']) await expect(page.locator(id)).toBeInViewport();
+    await page.locator('#tab-songs').click();
+    await expect(page.locator('#keep-safe')).toBeVisible();
   });
 });

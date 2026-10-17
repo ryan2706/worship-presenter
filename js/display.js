@@ -4,6 +4,7 @@ import { keepFitted } from './fit-text.js';
 const body = document.body;
 const screen = document.getElementById('screen');
 const textEl = document.getElementById('text');
+const captionEl = document.getElementById('caption');
 const fullscreenBtn = document.getElementById('fullscreen');
 
 const refit = keepFitted(textEl, screen);
@@ -16,11 +17,15 @@ const channel = openChannel((message) => {
 channel.send({ type: 'hello' });
 window.addEventListener('pagehide', () => channel.send({ type: 'bye' }));
 
-function show({ text = '', black = false }) {
+function show({ text = '', caption = '', black = false }) {
   // Keep the "waiting" help on screen until there's something to show.
   if (text || black) body.classList.remove('waiting');
   body.classList.toggle('black', black);
-  if (textEl.textContent !== text) {
+  // A Bible reference sits small at the bottom; the words make room for it.
+  const captionChanged = captionEl.textContent !== caption;
+  captionEl.textContent = caption;
+  body.classList.toggle('has-caption', Boolean(caption));
+  if (textEl.textContent !== text || captionChanged) {
     textEl.textContent = text;
     refit();
   }

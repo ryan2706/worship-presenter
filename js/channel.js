@@ -1,7 +1,9 @@
 // Shared messaging between the Control window and the Display window.
 //
 // Control -> Display
-//   { type: 'state', text, black }   the full picture for the TV, sent every time
+//   { type: 'state', text, caption, black }
+//                                    the full picture for the TV, sent every time.
+//                                    `caption` is the Bible reference ('' for songs).
 //   { type: 'ping' }                 "is a Display open?" (sent when Control loads)
 // Display -> Control
 //   { type: 'hello' }                "I'm open" (on load, and in reply to ping)
