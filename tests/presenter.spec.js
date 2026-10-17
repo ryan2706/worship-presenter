@@ -1,6 +1,7 @@
 // Browser checks for Worship Presenter.
 // Phase 1: the Control and TV windows, keys, Black screen, Clear text, reloads, wake lock, auto-fit.
 // Phase 2: the song library and switching between songs.
+// Phase 3: adding, editing, deleting and searching songs.
 //
 // Every test gets a fresh browser profile, so storage starts empty and the
 // sample songs are added on first load.
@@ -422,5 +423,385 @@ test.describe('Phase 2: song library', () => {
     await expect(page.locator('#song-title')).toHaveText('Rock of Ages');
     await expect(page.locator('#song-title')).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+});
+
+test.describe('Phase 3: song editor', () => {
+  const title = (page) => page.locator('#editor-song-title');
+  const lyrics = (page) => page.locator('#editor-lyrics');
+  const preview = (page) => page.locator('.preview-tile');
+  const button = (page, name) => page.getByRole('button', { name, exact: true });
+
+  async function addSong(page, songTitle, words) {
+    await page.locator('#add-song').click();
+    await title(page).fill(songTitle);
+    await lyrics(page).fill(words);
+    await button(page, 'Save song').click();
+    await expect(page.locator('#editor')).toBeHidden();
+  }
+
+  async function editViewedSong(page, change) {
+    await button(page, 'Edit song').click();
+    await expect(page.locator('#editor')).toBeVisible();
+    await lyrics(page).fill(change(await lyrics(page).inputValue()));
+  }
+
+  async function deleteViewedSong(page) {
+    await button(page, 'Edit song').click();
+    await button(page, 'Delete song').click();
+    await button(page, 'Yes, delete it').click();
+    await expect(page.locator('#editor')).toBeHidden();
+  }
+
+  test('adding a song shows a live preview and only changes the TV once saved', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await tile(page, 0).click();
+
+    await page.locator('#add-song').click();
+    await expect(page.locator('#editor')).toBeVisible();
+    await expect(page.locator('#main')).toBeHidden();
+    await expect(page.locator('#editor-title')).toHaveText('Add a song');
+    await expect(page.locator('.editor-note')).toHaveText(
+      'Songs you add are saved on this device only. For songs still under copyright, your group needs a CCLI licence.'
+    );
+    await expect(button(page, 'Delete song')).toBeHidden();
+    await expect(button(page, 'Restore original')).toBeHidden();
+    await expect(page.locator('#preview-count')).toHaveText('Type the words above to see the slides.');
+
+    await title(page).fill('A Test Song');
+    await lyrics(page).fill('[Verse 1]\nFirst line\nSecond line\n\n[Chorus]\nSing it out\n\n[Verse 2]\nThird line\n\n[Chorus]');
+    await expect(preview(page).locator('.tile-label')).toHaveText(['Verse 1', 'Chorus', 'Verse 2', 'Chorus']);
+    await expect(preview(page).nth(3).locator('.tile-text')).toHaveText('Sing it out');
+    await expect(page.locator('#preview-count')).toHaveText('4 slides');
+    await expect(tvText(tv)).toHaveText(/^Amazing grace/);
+    // The bottom bar still runs the TV while the editor is open.
+    await page.locator('#next').click();
+    await expect(tvText(tv)).toHaveText(/^’Twas grace/);
+
+    await button(page, 'Save song').click();
+    await expect(page.locator('#editor')).toBeHidden();
+    await expect(page.locator('#main')).toBeVisible();
+    await expect(page.locator('#song-title')).toHaveText('A Test Song');
+    await expect(page.locator('.song-name').first()).toHaveText('A Test Song');
+    await expect(page.locator('.tile-label')).toHaveText(['Verse 1', 'Chorus', 'Verse 2', 'Chorus']);
+    await expect(tvText(tv)).toHaveText(/^’Twas grace/);
+    await expect(page.locator('#elsewhere')).toBeVisible();
+
+    await page.reload();
+    await expect(page.locator('.song')).toHaveCount(9);
+    await expect(page.locator('#song-title')).toHaveText('A Test Song');
+    const stored = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const open = indexedDB.open('worship-presenter');
+          open.onsuccess = () => {
+            const all = open.result.transaction('songs').objectStore('songs').getAll();
+            all.onsuccess = () => resolve(all.result.find((song) => song.title === 'A Test Song'));
+          };
+        })
+    );
+    expect(stored.sections.map((s) => s.name)).toEqual(['Verse 1', 'Chorus', 'Verse 2']);
+    expect(stored.order).toEqual(['Verse 1', 'Chorus', 'Verse 2', 'Chorus']);
+  });
+
+  test('slides without a label are numbered, and a sample opens with its labels', async ({ page }) => {
+    await openControl(page);
+    await page.locator('#add-song').click();
+    await lyrics(page).fill('One\nTwo\n\nThree\nFour');
+    await expect(preview(page).locator('.tile-label')).toHaveText(['Slide 1', 'Slide 2']);
+    await button(page, 'Cancel').click();
+    await button(page, 'Throw away changes').click();
+
+    await songButton(page, 'It Is Well').click();
+    await button(page, 'Edit song').click();
+    await expect(page.locator('#editor-title')).toHaveText('Edit song');
+    await expect(title(page)).toHaveValue('It Is Well with My Soul');
+    const words = await lyrics(page).inputValue();
+    expect(words.startsWith('[Verse 1]\nWhen peace like a river')).toBe(true);
+    // The chorus is written out once, then repeated with just its label.
+    expect(words.split('\n\n').filter((block) => block === '[Chorus]')).toHaveLength(3);
+    await expect(preview(page)).toHaveCount(8);
+  });
+
+  test('the editor asks for a title and words', async ({ page }) => {
+    await openControl(page);
+    await page.locator('#add-song').click();
+    await button(page, 'Save song').click();
+    await expect(page.locator('#title-error')).toHaveText('Give the song a title.');
+    await expect(title(page)).toBeFocused();
+    await title(page).fill('Only a title');
+    await expect(page.locator('#title-error')).toBeHidden();
+    await button(page, 'Save song').click();
+    await expect(page.locator('#lyrics-error')).toHaveText('Type the words of at least one slide.');
+    await expect(lyrics(page)).toBeFocused();
+    await expect(page.locator('#editor')).toBeVisible();
+    await expect(page.locator('.song')).toHaveCount(8);
+  });
+
+  test('keys typed in the editor or the search box do not move the TV', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await tile(page, 0).click();
+
+    await page.locator('#search').click();
+    for (const key of ['ArrowDown', 'ArrowRight', 'PageDown', 'b', 'Space']) await page.keyboard.press(key);
+    await expect(page.locator('#search')).toHaveValue('b ');
+    await page.locator('#search').fill('');
+
+    await page.locator('#add-song').click();
+    await lyrics(page).click();
+    for (const key of ['ArrowDown', 'ArrowRight', 'PageDown', 'b', 'Space', 'Enter']) await page.keyboard.press(key);
+    await title(page).click();
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('B');
+
+    await expect(tvText(tv)).toHaveText(/^Amazing grace/);
+    await expect(page.locator('#black')).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('#live-note')).toHaveText('The TV is showing Amazing Grace, Verse 1 (slide 1 of 5).');
+  });
+
+  test('saving the song on the TV updates the TV and keeps the slide', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await tile(page, 2).click();
+
+    await editViewedSong(page, (words) => words.replace('Through many dangers', 'Through many perils'));
+    await expect(preview(page).nth(2).locator('.tile-text')).toHaveText(/^Through many perils/);
+    await expect(tvText(tv)).toHaveText(/^Through many dangers/);
+    await button(page, 'Save song').click();
+    await expect(tvText(tv)).toHaveText(/^Through many perils/);
+    await expectLiveTile(page, 2);
+
+    // Verse 1 removed: Verse 3 moves up, and the TV stays on it.
+    await editViewedSong(page, (words) => words.replace(/^\[Verse 1\][^[]*/, ''));
+    await button(page, 'Save song').click();
+    await expect(page.locator('.tile-label')).toHaveText(['Verse 2', 'Verse 3', 'Verse 4', 'Verse 5']);
+    await expectLiveTile(page, 1);
+    await expect(tvText(tv)).toHaveText(/^Through many perils/);
+    await expect(page.locator('#live-note')).toHaveText('The TV is showing Amazing Grace, Verse 3 (slide 2 of 4).');
+
+    // The slide on the TV removed: the TV shows the slide now in its place.
+    await editViewedSong(page, (words) => words.replace(/\[Verse 3\][^[]*/, ''));
+    await button(page, 'Save song').click();
+    await expectLiveTile(page, 1);
+    await expect(tvText(tv)).toHaveText(/^The Lord has promised/);
+
+    // Cleared words stay cleared after a save.
+    await page.locator('#clear').click();
+    await editViewedSong(page, (words) => words.replace('The Lord has promised', 'The Lord hath promised'));
+    await button(page, 'Save song').click();
+    await expect(tvText(tv)).toHaveText('');
+    await tile(page, 1).click();
+    await expect(tvText(tv)).toHaveText(/^The Lord hath promised/);
+  });
+
+  test('an edited sample can be put back to the original', async ({ page }) => {
+    await openControl(page);
+    // Saving a sample with no changes doesn't count as editing it.
+    await button(page, 'Edit song').click();
+    await expect(button(page, 'Restore original')).toBeHidden();
+    await button(page, 'Save song').click();
+    await button(page, 'Edit song').click();
+    await expect(button(page, 'Restore original')).toBeHidden();
+
+    await lyrics(page).fill((await lyrics(page).inputValue()).replace('Amazing grace!', 'Amazing love!'));
+    await button(page, 'Save song').click();
+    await expect(tile(page, 0).locator('.tile-text')).toHaveText(/^Amazing love!/);
+
+    await button(page, 'Edit song').click();
+    await button(page, 'Restore original').click();
+    await expect(page.locator('#confirm-text')).toHaveText(
+      'Put back the original words? Your changes to this song will be lost.'
+    );
+    await button(page, 'Keep my version').click();
+    await expect(page.locator('#editor-confirm')).toBeHidden();
+    await expect(button(page, 'Restore original')).toBeFocused();
+    await button(page, 'Restore original').click();
+    await button(page, 'Put back the original').click();
+    await expect(page.locator('#editor')).toBeHidden();
+    await expect(tile(page, 0).locator('.tile-text')).toHaveText(/^Amazing grace!/);
+    await button(page, 'Edit song').click();
+    await expect(button(page, 'Restore original')).toBeHidden();
+  });
+
+  test('sample updates in the repo never overwrite an edited copy', async ({ page }) => {
+    await openControl(page);
+    await editViewedSong(page, (words) => words.replace('Amazing grace!', 'Amazing love!'));
+    await button(page, 'Save song').click();
+
+    await page.route('**/js/sample-songs.js', async (route) => {
+      const response = await route.fetch();
+      const body = (await response.text())
+        .replace('Amazing grace! How sweet', 'NEW Amazing grace! How sweet')
+        .replace('Rock of Ages, cleft for me,\\nLet me hide', 'NEW Rock of Ages, cleft for me,\\nLet me hide');
+      await route.fulfill({ response, body });
+    });
+    await page.reload();
+    await expect(page.locator('.song')).toHaveCount(8);
+    await expect(tile(page, 0).locator('.tile-text')).toHaveText(/^Amazing love!/);
+    await songButton(page, 'Rock of Ages').click();
+    await expect(tile(page, 0).locator('.tile-text')).toHaveText(/^NEW Rock of Ages/);
+  });
+
+  test('deleting asks first, and a deleted sample stays deleted', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    await songButton(page, 'Rock of Ages').click();
+    await tile(page, 0).click();
+
+    await button(page, 'Edit song').click();
+    await button(page, 'Delete song').click();
+    await expect(page.locator('#confirm-text')).toHaveText('Delete ‘Rock of Ages’? This can’t be undone.');
+    await expect(page.locator('#editor-actions')).toBeHidden();
+    await button(page, 'Keep it').click();
+    await expect(page.locator('#editor')).toBeVisible();
+    await button(page, 'Cancel').click();
+    await expect(page.locator('.song')).toHaveCount(8);
+
+    await deleteViewedSong(page);
+    await expect(page.locator('.song')).toHaveCount(7);
+    await expect(songButton(page, 'Rock of Ages')).toHaveCount(0);
+    await expect(tvText(tv)).toHaveText('');
+    await expect(page.locator('#live-note')).toHaveText('Nothing is on the TV yet. Pick a slide.');
+    await expect(page.locator('#song-title')).toHaveText('Amazing Grace');
+
+    await page.reload();
+    await expect(page.locator('.song')).toHaveCount(7);
+    await expect(songButton(page, 'Rock of Ages')).toHaveCount(0);
+  });
+
+  test('a song you added can be deleted for good', async ({ page }) => {
+    await openControl(page);
+    await addSong(page, 'Gone Soon', 'Words');
+    await expect(page.locator('.song')).toHaveCount(9);
+    await deleteViewedSong(page);
+    await expect(page.locator('.song')).toHaveCount(8);
+    await expect(page.locator('#bring-back')).toBeHidden();
+  });
+
+  test('Bring back deleted sample songs returns them and leaves edited ones alone', async ({ page }) => {
+    await openControl(page);
+    await expect(page.locator('#bring-back')).toBeHidden();
+    await editViewedSong(page, (words) => words.replace('Amazing grace!', 'Amazing love!'));
+    await button(page, 'Save song').click();
+
+    for (const name of ['Rock of Ages', 'Holy, Holy, Holy']) {
+      await songButton(page, name).click();
+      await deleteViewedSong(page);
+    }
+    await expect(page.locator('.song')).toHaveCount(6);
+    await expect(page.locator('#bring-back')).toBeVisible();
+
+    await page.locator('#bring-back').click();
+    await expect(page.locator('.song')).toHaveCount(8);
+    await expect(page.locator('#bring-back')).toBeHidden();
+    await page.reload();
+    await expect(page.locator('.song')).toHaveCount(8);
+    await expect(page.locator('#bring-back')).toBeHidden();
+    await songButton(page, 'Amazing Grace').click();
+    await expect(tile(page, 0).locator('.tile-text')).toHaveText(/^Amazing love!/);
+  });
+
+  test('search finds songs by title or words', async ({ page }) => {
+    await openControl(page);
+    const search = page.locator('#search');
+    const visibleNames = () => page.locator('.song:visible .song-name');
+
+    await search.fill('rock');
+    await expect(visibleNames()).toHaveText(['Rock of Ages']);
+    await search.fill('WRETCH');
+    await expect(visibleNames()).toHaveText(['Amazing Grace']);
+    // Straight and curly apostrophes, and punctuation, don't matter.
+    await search.fill("'twas grace that taught");
+    await expect(visibleNames()).toHaveText(['Amazing Grace']);
+    await search.fill('holy holy');
+    await expect(visibleNames()).toHaveText(['Holy, Holy, Holy']);
+
+    await search.fill('zebra');
+    await expect(page.locator('.song:visible')).toHaveCount(0);
+    await expect(page.locator('#no-match')).toHaveText('No songs match ‘zebra’.');
+    await search.fill('');
+    await expect(page.locator('.song:visible')).toHaveCount(8);
+    await expect(page.locator('#no-match')).toBeHidden();
+
+    // A new song is found too, and the search stays after saving.
+    await search.fill('rock');
+    await addSong(page, 'Solid Rock Test', 'On Christ the solid rock I stand');
+    await expect(visibleNames()).toHaveText(['Rock of Ages', 'Solid Rock Test']);
+  });
+
+  test('Cancel asks first only when something changed', async ({ page }) => {
+    await openControl(page);
+    await button(page, 'Edit song').click();
+    await button(page, 'Cancel').click();
+    await expect(page.locator('#editor')).toBeHidden();
+
+    await button(page, 'Edit song').click();
+    await title(page).fill('Changed');
+    await button(page, 'Cancel').click();
+    await expect(page.locator('#confirm-text')).toHaveText('Throw away your changes?');
+    await button(page, 'Keep editing').click();
+    await expect(title(page)).toHaveValue('Changed');
+    await button(page, 'Cancel').click();
+    await button(page, 'Throw away changes').click();
+    await expect(page.locator('#editor')).toBeHidden();
+    await expect(page.locator('#song-title')).toHaveText('Amazing Grace');
+  });
+
+  test('pasted words with a blank line after every line can be joined into verses', async ({ page }) => {
+    await openControl(page);
+    await page.locator('#add-song').click();
+    const nine = Array.from({ length: 9 }, (_, i) => `Line ${i + 1}`).join('\n\n');
+    await lyrics(page).fill(nine);
+    await expect(preview(page)).toHaveCount(9);
+    await expect(page.locator('#join-notice')).toBeVisible();
+    await expect(page.locator('#join-notice p')).toHaveText(
+      'It looks like every line became its own slide. Join lines into verses?'
+    );
+    await button(page, 'Join lines into verses').click();
+    await expect(preview(page)).toHaveCount(3);
+    await expect(preview(page).locator('.tile-text')).toHaveText([
+      'Line 1\nLine 2\nLine 3\nLine 4',
+      'Line 5\nLine 6\nLine 7\nLine 8',
+      'Line 9',
+    ]);
+    await expect(page.locator('#join-notice')).toBeHidden();
+
+    // A label starts a new slide.
+    await lyrics(page).fill('A\n\nB\n\n[Chorus]\n\nC\n\nD\n\nE');
+    await expect(page.locator('#join-notice')).toBeVisible();
+    await button(page, 'Join lines into verses').click();
+    await expect(lyrics(page)).toHaveValue('A\nB\n\n[Chorus]\nC\nD\nE');
+    await expect(preview(page).locator('.tile-label')).toHaveText(['Slide 1', 'Chorus']);
+
+    // Normal verses never show the notice.
+    await lyrics(page).fill('One\nTwo\n\nThree\nFour\n\nFive\nSix\n\nSeven\nEight');
+    await expect(preview(page)).toHaveCount(4);
+    await expect(page.locator('#join-notice')).toBeHidden();
+  });
+
+  test('a slide with more than 6 lines gets a gentle note', async ({ page }) => {
+    await openControl(page);
+    await page.locator('#add-song').click();
+    const lines = (n) => Array.from({ length: n }, (_, i) => `Line ${i + 1}`).join('\n');
+    await lyrics(page).fill(`${lines(6)}\n\n${lines(7)}`);
+    await expect(preview(page)).toHaveCount(2);
+    await expect(preview(page).nth(0).locator('.long-note')).toBeHidden();
+    await expect(preview(page).nth(1)).toHaveClass(/is-long/);
+    await expect(preview(page).nth(1).locator('.long-note')).toHaveText(
+      'This slide is long and the words will be small on the TV. Add a blank line to split it.'
+    );
+  });
+
+  test('the editor works at phone width', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openControl(page);
+    await button(page, 'Edit song').click();
+    await expect(page.locator('#editor')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    for (const id of ['#previous', '#next', '#black', '#clear']) await expect(page.locator(id)).toBeInViewport();
+    await button(page, 'Save song').scrollIntoViewIfNeeded();
+    await expect(button(page, 'Save song')).toBeInViewport();
   });
 });

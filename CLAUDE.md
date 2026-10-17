@@ -32,6 +32,8 @@ Volunteers who are not technical.
 - `js/channel.js`: the shared channel name, the message list, and the keyboard shortcut rules.
 - `js/fit-text.js`: auto-fits text to any screen, used by the TV and by the slide previews.
 - `js/library.js`: the song library. It is the only file that touches IndexedDB.
+- `js/editor.js`: the song editor (add, edit, delete, restore) with its live preview.
+- `js/lyrics.js`: turns the editor's lyrics box into a song's sections and back.
 - `js/sample-songs.js`: the sample hymns that are added the first time the app runs.
 
 To try it locally, run `python3 -m http.server 8000` in the project folder and open http://localhost:8000. ES modules don't load from `file://`.
@@ -59,13 +61,31 @@ The channel name is `worship-presenter`.
 
 ### Songs
 
-- They are stored in the IndexedDB database `worship-presenter`, store `songs`, keyed by `id`. The samples are added only when the database is first created. If IndexedDB can't be opened, the built-in samples are shown instead.
-- A song is `{id, title, author, year, source?, sections: [{name, text}], order?}`. Each section is one slide. `order` lists section names in the order they're sung, so a chorus can repeat. Without it, the sections are used in the order listed.
+- They are stored in the IndexedDB database `worship-presenter`, store `songs`, keyed by `id`. If IndexedDB can't be opened, the built-in samples are shown instead, and saving shows a plain message.
+- Songs are only ever saved in this browser, never to the repo or any server.
+- A song is `{id, title, author?, year?, source?, sections: [{name, text}], order?, edited?}`. Each section is one slide. `order` lists section names in the order they're sung, so a chorus can repeat. Without it, the sections are used in the order listed. Songs the user adds get a random id.
+- **Samples** are the songs whose id is in `js/sample-songs.js`. Each time the library loads, they are synced with that file:
+  - a missing sample is added;
+  - an unedited one is replaced with the file's version;
+  - one marked `edited: true` is **never touched**;
+  - a deleted one is kept as a marker `{id, deleted: true}`, so it stays away.
+
+  A sample is marked `edited` only when its title or words differ from the original. **Restore original** puts back the file's version. **Bring back deleted sample songs** (under the song list, shown only when a sample was deleted) removes the markers.
 - Each slide tile shows its section name, such as "Verse 1" or "Chorus".
+
+### Song editor
+
+- A title field and one lyrics box. A blank line starts a new slide. A label such as `[Verse 1]` or `[Chorus]` on its own line names the slide below it. A label with no words under it repeats the earlier slide with that name, which is stored as `order`. Slides with no label are called "Slide 1", "Slide 2" and so on.
+- The live preview shows mini-TV tiles. Any slide over 6 lines gets a note saying it's long. If every slide is a single line (pasted with blank lines between lines), a notice offers **Join lines into verses**, which makes slides of up to 4 lines. A label always starts a new slide.
+- The editor replaces the songs and slides while it's open. The bottom bar still runs the TV.
+- Delete, Restore original, and Cancel with unsaved changes all ask first, in the page itself (no browser pop-ups).
+- The note "Songs you add are saved on this device only. For songs still under copyright, your group needs a CCLI licence." is always shown.
+- **Editing doesn't change the TV until Save.** When the song on the TV is saved, the TV gets the new words and stays on the same slide. It looks for that slide in this order: the same position with the same name, then the nearest slide with that name, then the same position, then the last slide. Black screen and Clear text stay as they were. Deleting the song on the TV clears the TV.
+- Search (above the song list) matches titles and words. It ignores capitals, accents, punctuation and curly quotes.
 
 ### Behaviour rules
 
-- **One key press, one action.** Arrows, PageUp/PageDown and B always act. Space and Enter only mean "next slide" when focus is not on a button, link or form field; otherwise the focused button handles them. After a mouse click on a slide, focus leaves it so that Space goes back to meaning "next".
+- **One key press, one action.** Arrows, PageUp/PageDown and B always act, except while typing in a text box (search, title, lyrics), where no key is a shortcut. Space and Enter only mean "next slide" when focus is not on a button, link or form field; otherwise the focused button handles them. After a mouse click on a slide, focus leaves it so that Space goes back to meaning "next".
 - **Black screen and Clear text are different.** Black screen hides everything (and later, backgrounds too) and is a toggle. Clear text hides only the words and keeps the slide selected. Picking a slide brings the words back.
 - **Auto-fit keeps lyric lines whole** when that is at least 70% of the size that wrapping would allow. The largest text is capped at one fifth of the screen height.
 - **The Display holds a screen wake lock** while it is showing something, and asks again when the window becomes visible.
@@ -109,3 +129,7 @@ Add one line per decision, newest at the bottom, with the date.
 - 2026-10-17: Sample hymns: Amazing Grace, Be Thou My Vision, Blessed Assurance, Come Thou Fount, Holy Holy Holy, It Is Well with My Soul, Rock of Ages, What a Friend We Have in Jesus. Commonly sung wording, all verses pre-1929.
 - 2026-10-17: Looking at a song doesn't change the TV. Next finishes the song on the TV, then starts the song being viewed.
 - 2026-10-17: Phase 1 and 2 browser checks saved as a Playwright test suite in `tests/`. Run with `npm test --prefix tests`. It uses the installed Google Chrome, because downloading Playwright's Chromium timed out here.
+- 2026-10-17: Song editor added: add, edit, delete and search songs, all saved only in this browser. One lyrics box with [Label] lines and blank lines between slides; a bare label repeats a section.
+- 2026-10-17: Edited samples are marked `edited` and are never overwritten by sample updates in the repo. Unedited samples follow the repo. Deleted samples leave a marker so they stay deleted until "Bring back deleted sample songs" is pressed.
+- 2026-10-17: Saving the song on the TV updates the TV and keeps the same slide where it still exists. No shortcuts fire while typing in a text box.
+- 2026-10-17: The editor offers to join one-line slides into slides of up to 4 lines, and notes slides over 6 lines as long.

@@ -38,14 +38,26 @@
     </p>
   </section>
 
-  <main class="main">
+  <main id="main" class="main">
     <section class="songs-panel" aria-labelledby="songs-title">
-      <h2 id="songs-title" class="panel-title">Songs</h2>
+      <div class="panel-head">
+        <h2 id="songs-title" class="panel-title">Songs</h2>
+        <button id="add-song" class="btn btn-small" type="button">+ Add song</button>
+      </div>
+      <label class="search">
+        <span class="visually-hidden">Search songs</span>
+        <input id="search" type="search" placeholder="Search songs: title or words" autocomplete="off" enterkeyhint="search">
+      </label>
       <ul id="songs" class="songs"></ul>
+      <p id="no-match" class="no-match" role="status" hidden></p>
+      <button id="bring-back" class="link-button" type="button" hidden>Bring back deleted sample songs</button>
     </section>
 
     <section class="slides-panel" aria-labelledby="song-title">
-      <h2 id="song-title" class="song-title">Loading songs…</h2>
+      <div class="song-head">
+        <h2 id="song-title" class="song-title">Loading songs…</h2>
+        <button id="edit-song" class="btn btn-small" type="button" hidden>Edit song</button>
+      </div>
       <div id="elsewhere" class="elsewhere" hidden>
         <p id="elsewhere-text"></p>
         <button id="go-live-song" class="btn" type="button">Go to that song</button>
@@ -53,6 +65,59 @@
       <ol id="slides" class="slides"></ol>
     </section>
   </main>
+
+  <section id="editor" class="editor" aria-labelledby="editor-title" hidden>
+    <h2 id="editor-title" class="song-title">Add a song</h2>
+    <p class="editor-note">
+      Songs you add are saved on this device only. For songs still under copyright, your group needs a CCLI licence.
+    </p>
+    <form id="editor-form" class="editor-form" novalidate>
+      <div class="editor-fields">
+        <div class="field">
+          <label for="editor-song-title" class="field-label">Title</label>
+          <input id="editor-song-title" type="text" autocomplete="off" aria-describedby="title-error">
+          <p id="title-error" class="field-error" hidden></p>
+        </div>
+        <div class="field">
+          <label for="editor-lyrics" class="field-label">Words</label>
+          <p id="lyrics-help" class="field-help">
+            Leave a blank line to start a new slide. To name a slide, put a label like
+            <strong>[Verse 1]</strong>, <strong>[Chorus]</strong> or <strong>[Bridge]</strong> on its own line above it.
+            To sing the chorus again, just write <strong>[Chorus]</strong> on its own line.
+          </p>
+          <textarea id="editor-lyrics" rows="16" aria-describedby="lyrics-help lyrics-error"></textarea>
+          <p id="lyrics-error" class="field-error" hidden></p>
+        </div>
+        <div id="join-notice" class="notice" hidden>
+          <p>It looks like every line became its own slide. Join lines into verses?</p>
+          <button id="join-lines" class="btn" type="button">Join lines into verses</button>
+        </div>
+
+        <p id="editor-error" class="alert" role="alert" hidden></p>
+
+        <div id="editor-actions" class="editor-actions">
+          <button id="editor-save" class="btn btn-primary" type="submit">Save song</button>
+          <button id="editor-cancel" class="btn" type="button">Cancel</button>
+          <button id="editor-restore" class="btn" type="button" hidden>Restore original</button>
+          <button id="editor-delete" class="btn" type="button" hidden>Delete song</button>
+        </div>
+
+        <div id="editor-confirm" class="confirm" hidden>
+          <p id="confirm-text"></p>
+          <div class="confirm-buttons">
+            <button id="confirm-yes" class="btn btn-primary" type="button"></button>
+            <button id="confirm-no" class="btn" type="button"></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="editor-preview">
+        <h3 class="panel-title">Preview</h3>
+        <p id="preview-count" class="preview-count">Type the words above to see the slides.</p>
+        <ol id="preview" class="slides preview"></ol>
+      </div>
+    </form>
+  </section>
 
   <footer class="bar">
     <p id="live-note" class="live-note" role="status">Nothing is on the TV yet. Pick a slide.</p>

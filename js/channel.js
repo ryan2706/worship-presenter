@@ -21,8 +21,10 @@ export function openChannel(onMessage) {
 // Turns a key press into a slide action, or null if the key isn't a shortcut.
 // Space and Enter only count when focus isn't on something that already uses
 // them (a button, link or form field), so one key press does one thing.
+// While someone is typing in a text box, no key is a shortcut.
 export function shortcutFor(event) {
   if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return null;
+  if (isTyping(document.activeElement)) return null;
 
   switch (event.key) {
     case 'ArrowRight':
@@ -48,5 +50,15 @@ function usesSpaceAndEnter(element) {
   return Boolean(
     element &&
       element.closest('button, a[href], input, select, textarea, summary, [contenteditable]:not([contenteditable="false"])')
+  );
+}
+
+function isTyping(element) {
+  return Boolean(
+    element &&
+      element.closest(
+        'textarea, select, [contenteditable]:not([contenteditable="false"]), ' +
+          'input:not([type="button"], [type="checkbox"], [type="radio"], [type="submit"], [type="reset"], [type="range"], [type="color"], [type="file"])'
+      )
   );
 }

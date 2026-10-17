@@ -69,16 +69,29 @@ ol {
   outline-offset: 3px;
 }
 
-.btn-open {
+.btn-open,
+.btn-primary {
   background: var(--paper);
   border-color: var(--paper);
   color: var(--evening);
   padding-inline: 1.75rem;
 }
 
-.btn-open:hover {
+.btn-open:hover,
+.btn-primary:hover {
   background: var(--mist);
   border-color: var(--mist);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.btn-small {
+  min-height: 2.75rem;
+  padding: 0.4rem 0.9rem;
+  font-size: 1rem;
 }
 
 .btn kbd {
@@ -209,6 +222,10 @@ ol {
   padding: 0 var(--gutter) 2rem;
 }
 
+.main[hidden] {
+  display: none;
+}
+
 @media (min-width: 56rem) {
   .main {
     grid-template-columns: 17rem minmax(0, 1fr);
@@ -295,6 +312,91 @@ ol {
 
 .song:not(.is-live) .song-live {
   display: none;
+}
+
+.panel-head,
+.song-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.panel-head .panel-title {
+  margin-bottom: 0;
+}
+
+.song-head {
+  margin-bottom: 1rem;
+}
+
+.song-head .song-title {
+  margin-bottom: 0;
+}
+
+/* Search box and what's under the song list. */
+
+.search {
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+input[type="search"],
+input[type="text"],
+textarea {
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.65rem 0.85rem;
+  border: 2px solid var(--dusk-edge);
+  border-radius: 0.6rem;
+  background: var(--evening);
+  color: var(--paper);
+  font: 1.05rem/1.4 var(--font);
+}
+
+input::placeholder {
+  color: var(--mist);
+  opacity: 0.8;
+}
+
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--paper);
+  outline-offset: 2px;
+  border-color: var(--paper);
+}
+
+[aria-invalid="true"] {
+  border-color: var(--paper);
+  border-style: dashed;
+}
+
+.no-match {
+  color: var(--mist);
+}
+
+.link-button {
+  margin-top: 1rem;
+  padding: 0.5rem 0.25rem;
+  border: 0;
+  background: none;
+  color: var(--mist);
+  font: 1rem/1.3 var(--font);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: var(--paper);
+}
+
+.link-button:focus-visible {
+  outline: 3px solid var(--paper);
+  outline-offset: 2px;
 }
 
 .song-title {
@@ -429,6 +531,157 @@ ol {
   box-shadow: inset 0 0 0 2px var(--candle);
 }
 
+/* Song editor: the words on one side, the preview on the other. */
+
+.editor {
+  flex: 1;
+  padding: 0 var(--gutter) 2rem;
+}
+
+.editor-note {
+  max-width: 48rem;
+  margin-bottom: 1.25rem;
+  padding: 0.75rem 1rem;
+  border-left: 6px solid var(--mist);
+  border-radius: 0.5rem;
+  background: var(--dusk);
+}
+
+.editor-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem 2rem;
+  align-items: start;
+}
+
+@media (min-width: 56rem) {
+  .editor-form {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .editor-preview {
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - var(--bar-height, 6rem) - 2rem);
+    overflow-y: auto;
+  }
+}
+
+.editor-fields > .alert {
+  margin: 0;
+}
+
+/* Keep the editor's buttons clear of the bottom bar when scrolled to. */
+.editor .btn,
+.editor input,
+.editor textarea {
+  scroll-margin-bottom: calc(var(--bar-height, 6rem) + 1rem);
+}
+
+.editor-fields {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.field-label {
+  font-weight: 700;
+}
+
+.field-help {
+  color: var(--mist);
+  font-size: 1rem;
+}
+
+.field-help strong {
+  color: var(--paper);
+  white-space: nowrap;
+}
+
+textarea {
+  min-height: 22rem;
+  resize: vertical;
+}
+
+.field-error {
+  font-weight: 700;
+}
+
+.field-error::before {
+  content: "! ";
+}
+
+.notice,
+.confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  padding: 0.85rem 1rem 0.85rem 1.25rem;
+  border-left: 6px solid var(--paper);
+  border-radius: 0.5rem;
+  background: var(--dusk);
+}
+
+.notice[hidden],
+.confirm[hidden] {
+  display: none;
+}
+
+.notice p,
+.confirm p {
+  flex: 1 1 16rem;
+  font-weight: 700;
+}
+
+.confirm-buttons,
+.editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.editor-actions[hidden] {
+  display: none;
+}
+
+/* Push Restore and Delete away from Save and Cancel. */
+.editor-actions #editor-restore:not([hidden]),
+.editor-actions #editor-restore[hidden] + #editor-delete {
+  margin-left: auto;
+}
+
+.preview-count {
+  margin-bottom: 0.75rem;
+  color: var(--mist);
+}
+
+.preview {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
+  gap: 1rem;
+}
+
+.preview-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.preview-tile.is-long .tile-screen {
+  border-style: dashed;
+  border-color: var(--mist);
+}
+
+.long-note {
+  color: var(--mist);
+  font-size: 0.95rem;
+  padding-inline: 0.25rem;
+}
+
 /* Bottom bar stays in reach on long pages and on phones. */
 
 .bar {
@@ -483,6 +736,25 @@ ol {
   .song {
     padding: 0.6rem 0.75rem;
     font-size: 1rem;
+  }
+
+  .editor-actions .btn,
+  .confirm-buttons .btn {
+    flex: 1 1 auto;
+  }
+
+  .editor-actions #editor-restore:not([hidden]),
+  .editor-actions #editor-restore[hidden] + #editor-delete {
+    margin-left: 0;
+  }
+
+  textarea {
+    min-height: 16rem;
+  }
+
+  .preview {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
   }
 
   .bar-buttons {

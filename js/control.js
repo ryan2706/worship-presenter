@@ -1,6 +1,15 @@
 import { openChannel, shortcutFor } from './channel.js';
 import { keepFitted } from './fit-text.js';
-import { listSongs, slidesFor } from './library.js';
+import { createEditor } from './editor.js';
+import {
+  countDeletedSamples,
+  deleteSong,
+  listSongs,
+  restoreDeletedSamples,
+  restoreSample,
+  saveSong,
+  slidesFor,
+} from './library.js';
 
 // What the TV should show (songId + index), and which song's slides are on
 // this page (viewId). Kept for this tab so a reload carries on where it was.
@@ -12,11 +21,18 @@ let songs = [];
 let ready = false;
 const slidesBySong = new Map();
 const songButtons = new Map();
+const searchText = new Map();
 let tiles = [];
 let fitters = [];
 
 const el = {
+  main: document.getElementById('main'),
   songs: document.getElementById('songs'),
+  search: document.getElementById('search'),
+  noMatch: document.getElementById('no-match'),
+  bringBack: document.getElementById('bring-back'),
+  addSong: document.getElementById('add-song'),
+  editSong: document.getElementById('edit-song'),
   songTitle: document.getElementById('song-title'),
   elsewhere: document.getElementById('elsewhere'),
   elsewhereText: document.getElementById('elsewhere-text'),
@@ -62,6 +78,41 @@ el.goLiveSong.addEventListener('click', (event) => {
   else el.songTitle.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
 });
 
+// Adding, editing and deleting songs. The TV only changes once a change is saved.
+const editor = createEditor({
+  onOpen: () => (el.main.hidden = true),
+  onClose: () => {
+    el.main.hidden = false;
+    el.songTitle.scrollIntoView({ block: 'start' });
+  },
+  onSave: async (song) => {
+    await saveSong(song);
+    await reloadLibrary(song.id);
+  },
+  onRestore: async (id) => {
+    await restoreSample(id);
+    await reloadLibrary(id);
+  },
+  onDelete: async (id) => {
+    await deleteSong(id);
+    await reloadLibrary();
+  },
+});
+el.addSong.addEventListener('click', () => editor.open());
+el.editSong.addEventListener('click', () => {
+  const song = songs.find((s) => s.id === state.viewId);
+  if (song) editor.open(song);
+});
+el.search.addEventListener('input', applySearch);
+el.bringBack.addEventListener('click', async () => {
+  try {
+    await restoreDeletedSamples();
+  } catch (error) {
+    console.warn('The deleted samples could not be brought back.', error);
+  }
+  await reloadLibrary();
+});
+
 // Keyboard shortcuts. Space and Enter on a focused button only press that button.
 document.addEventListener('keydown', (event) => {
   const action = shortcutFor(event);
@@ -84,14 +135,73 @@ render();
 start();
 
 async function start() {
-  songs = await listSongs();
-  songs.forEach((song) => slidesBySong.set(song.id, slidesFor(song)));
+  await loadSongs();
   checkState();
   ready = true;
   buildSongList();
   buildTiles();
   render();
   sendState();
+}
+
+async function loadSongs() {
+  songs = await listSongs();
+  slidesBySong.clear();
+  searchText.clear();
+  songs.forEach((song) => {
+    slidesBySong.set(song.id, slidesFor(song));
+    searchText.set(song.id, forSearch([song.title, ...song.sections.map((s) => s.text)].join(' ')));
+  });
+  el.bringBack.hidden = (await countDeletedSamples()) === 0;
+}
+
+// After a song is saved, restored or deleted. If the song on the TV changed,
+// the TV gets the new words and stays on the same slide if it still exists.
+async function reloadLibrary(viewId) {
+  const before = liveSlide();
+  await loadSongs();
+  const slides = slidesBySong.get(state.songId);
+  if (before && slides?.length) state.index = sameSlide(slides, before, state.index);
+  if (slidesBySong.has(viewId)) state.viewId = viewId;
+  checkState();
+  buildSongList();
+  buildTiles();
+  render();
+  sendState();
+}
+
+// Where the slide that was on the TV is now, in a changed song.
+function sameSlide(slides, before, index) {
+  if (slides[index]?.name === before.name) return index;
+  let best = -1;
+  slides.forEach((slide, i) => {
+    if (slide.name === before.name && (best < 0 || Math.abs(i - index) < Math.abs(best - index))) best = i;
+  });
+  if (best >= 0) return best;
+  return Math.min(index, slides.length - 1);
+}
+
+// Search ignores capitals, accents, punctuation and curly quotes.
+function forSearch(text) {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function applySearch() {
+  const query = forSearch(el.search.value);
+  let shown = 0;
+  songButtons.forEach((button, id) => {
+    const match = !query || searchText.get(id).includes(query);
+    button.parentElement.hidden = !match;
+    if (match) shown += 1;
+  });
+  el.noMatch.hidden = shown > 0;
+  if (!shown) el.noMatch.textContent = `No songs match ‘${el.search.value.trim()}’.`;
 }
 
 // Songs
@@ -120,6 +230,7 @@ function buildSongList() {
     el.songs.append(item);
     songButtons.set(song.id, button);
   });
+  applySearch();
 }
 
 // Shows a song's slides on this page. The TV doesn't change.
@@ -140,6 +251,7 @@ function buildTiles() {
   const songId = state.viewId;
   const slides = slidesBySong.get(songId) ?? [];
   el.songTitle.textContent = songTitle(songId) ?? 'No songs yet';
+  el.editSong.hidden = !slidesBySong.has(songId);
 
   tiles = slides.map((slide, i) => {
     const item = document.createElement('li');
