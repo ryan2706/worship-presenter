@@ -49,6 +49,7 @@ Volunteers who are not technical.
 - `.nojekyll`: tells GitHub Pages to serve the files as they are.
 - `data/kjv.json`, `data/web.json`: the Bible text. See `data/README.md` for sources and licences.
 - `tools/make-bible-data.py`: remakes the Bible files from eBible.org. Run by hand; it is not a build step.
+- `tools/import-charts.py`: turns the chord charts in `charts/` into a file of songs for Restore. Run by hand. See Chord chart import.
 
 It is live at https://ryan2706.github.io/worship-presenter/, published by GitHub Pages from the root of the `main` branch. Every address in the site is relative (no leading `/`), so it works in that subfolder. Pushing to `main` updates the live site.
 
@@ -68,7 +69,7 @@ The browser checks for every phase live in `tests/presenter.spec.js` and use Pla
 The channel name is `worship-presenter`.
 
 - Control to Display:
-  - `{type:'state', text, caption, black}` is always the full picture, so a Display that reloads catches up. `caption` is the Bible reference and translation shown small at the bottom of the TV, such as "John 3:16 · KJV". It is `''` for songs, and when the text is cleared.
+  - `{type:'state', text, caption, black}` is always the full picture, so a Display that reloads catches up. `caption` is the Bible reference and translation shown small at the bottom of the TV, such as "John 3:16 · KJV". It is `''` for songs, and when the text is cleared. A copyrighted song (`copyrighted: true`) has the caption "<Title> is the copyrighted property of its owner(s)."
   - `{type:'ping'}` asks whether a Display is open. It is sent when the Control page loads and after any Display closes.
 - Display to Control:
   - `{type:'hello'}` is sent on load and in reply to `ping`.
@@ -79,7 +80,7 @@ The channel name is `worship-presenter`.
 
 - They are stored in the IndexedDB database `worship-presenter` (version 2), store `songs`, keyed by `id`. Version 2 added the `services` store; songs from version 1 are kept. If IndexedDB can't be opened, the built-in samples are shown instead, and saving shows a plain message.
 - Songs are only ever saved in this browser, never to the repo or any server.
-- A song is `{id, title, author?, year?, source?, sections: [{name, text}], order?, edited?}`. Each section is one slide. `order` lists section names in the order they're sung, so a chorus can repeat. Without it, the sections are used in the order listed. Songs the user adds get a random id.
+- A song is `{id, title, author?, year?, source?, key?, copyrighted?, sections: [{name, text}], order?, edited?}`. `key` is the musical key from a chord chart, kept for later. `copyrighted: true` shows the copyright line on the TV. Each section is one slide. `order` lists section names in the order they're sung, so a chorus can repeat. Without it, the sections are used in the order listed. Songs the user adds get a random id.
 - **Samples** are the songs whose id is in `js/sample-songs.js`. Each time the library loads, they are synced with that file:
   - a missing sample is added;
   - an unedited one is replaced with the file's version;
@@ -113,6 +114,16 @@ Everything stays on this device unless the volunteer presses a button that saves
 - The **Keep your songs safe** box (Back up, Restore, Share) sits under the song list. On phones it moves below the slides, so the slides come first.
 - After any change to the songs, the app asks the browser to keep its storage (`navigator.storage.persist`).
 - `localStorage` key `worship-presenter:backup` holds `changedAt` (first change since the last backup) and `dismissedAt`. A reminder shows when changes have gone 7 days without a backup, but only while no slide has been put on the TV in this session (so it never shows during worship). **Not now** hides it for 7 days. Songs that existed before this feature count as a change.
+
+### Chord chart import
+
+- `charts/` holds chord charts from the GEAR project (`charts/<Letter>/<slug>.html`, each a `<pre class="chord-chart" data-key>`). Most are copyrighted, so `charts/` is in `.gitignore`: the charts and the converted file never go on GitHub or the live site.
+- `python3 tools/import-charts.py` (standard library only) writes `charts/imported-songs.json`, a `shared` file, and prints a report. The volunteer loads it on each device with **Restore from backup**.
+- Titles come from GEAR's `data/songs.json` index (`../GEAR/data/songs.json`), or else from the file name. Ids are `chart-<slug>`, so running it again and restoring finds the songs already there.
+- Only words are kept. Chord lines, inline chords (`[F]`), pinyin (`py:`), `#` comments, `{…}` markers and musician notes in parentheses (`(x2)`, `(To Ending)`…) are left out; parentheses with sung words ("(Praise Him)") stay. Sections with no words (Intro, Interlude…) are dropped. Labels are tidied (`VERSE 2` → `Verse 2`).
+- Blank lines inside a section split it into slides with the same label. Bilingual charts put each English line with its Chinese line, two pairs to a slide.
+- Dashes in the words are decided from all the charts' words: "Je ---- sus" is joined when "Jesus" is sung more often than "Je sus"; otherwise a run of dashes becomes a space ("Holy ---- Spirit").
+- Each song gets `source: 'Imported from chord charts'`, `key` and `copyrighted: true`.
 
 ### Bible
 
@@ -179,6 +190,7 @@ Everything stays on this device unless the volunteer presses a button that saves
 
 - Ship only public-domain hymns as samples. That means hymns published before 1929.
 - Use the commonly sung wording rather than the author's earliest version, as long as every verse was published before 1929. Note where the wording differs in the song's `source` field.
+- Songs imported from chord charts stay on the device (see Chord chart import). They are never committed or published.
 - Ship only public-domain Bibles: KJV and WEB.
 - Never put an API key in the site's code. Keys live only in the Cloudflare Worker.
 - When we add ESV, follow Crossway's ESV API terms (including their limits on how much text is shown and stored, and the required copyright notice).
@@ -210,3 +222,4 @@ Add one line per decision, newest at the bottom, with the date.
 - 2026-10-17: Bible tab added. Passages are items like songs (same Next, Black screen, reload and "On the TV" rules). One verse per slide by default, with an option for two short verses. Verses over 200 characters are split across slides. The TV shows the reference and translation small at the bottom (`caption` in the state message). Translations are listed only in `js/bibles.js`, and only references are saved, so ESV can be added later as one more entry.
 - 2026-10-17: Service order added: a third tab with saved services (name and date), built with Add to service, reordered by dragging or Up/Down, and run with Next from one item to the next. Services are stored in IndexedDB (database version 2, store `services`) as references only. A song opened from the Songs or Bible tab still plays next, then the service carries on. Moving or removing items while the service runs never changes the TV. Backups include every service, and Share can include services with their songs; restored services are relinked to the songs on this device, and a different service with the same id is added as a copy.
 - 2026-10-17: Published on GitHub Pages at /worship-presenter/ from the `main` branch root. All addresses are relative, checked by a test that serves the app from a subfolder. Added an About page and a 404 page.
+- 2026-10-19: Chord charts are imported with `tools/import-charts.py` into a shared-songs file loaded by Restore, not shipped, because most are copyrighted. `charts/` is gitignored. Songs gain optional `key` and `copyrighted`; a copyrighted song shows "<Title> is the copyrighted property of its owner(s)." as the TV caption.

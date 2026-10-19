@@ -1075,6 +1075,37 @@ test.describe('Phase 4: backup, restore and sharing', () => {
     await expect(tile(page, 0).locator('.tile-text')).toHaveText('Our words');
   });
 
+  test('a song imported from chord charts keeps its key and shows its copyright line on the TV', async ({ page }) => {
+    await openControl(page);
+    const tv = await openDisplay(page);
+    const imported = {
+      ...song('chart-our-hymn', 'Our Hymn', 'First words', 'Second words'),
+      source: 'Imported from chord charts',
+      key: 'G',
+      copyrighted: true,
+    };
+    await chooseFile(page, fileWith([imported], { kind: 'shared' }), 'imported-songs.json');
+    await button(page, 'Add songs').click();
+    await expect(page.locator('.song')).toHaveCount(9);
+
+    await songButton(page, 'Our Hymn').click();
+    const notice = 'Our Hymn is the copyrighted property of its owner(s).';
+    await expect(tile(page, 0).locator('.tile-ref')).toHaveText(notice);
+    await tile(page, 1).click();
+    await expect(tvText(tv)).toHaveText('Second words');
+    await expect(tv.locator('#caption')).toHaveText(notice);
+
+    // Other songs have no caption.
+    await songButton(page, 'Amazing Grace').click();
+    await expect(tile(page, 0).locator('.tile-ref')).toHaveCount(0);
+    await tile(page, 0).click();
+    await expect(tv.locator('#caption')).toHaveText('');
+
+    // The key and the copyright mark stay with the song, and go into backups.
+    const { file } = await saveFileFrom(page, button(page, 'Back up my songs'));
+    expect(file.songs).toContainEqual(imported);
+  });
+
   test('a shared song you already have can be kept as a second copy', async ({ page }) => {
     await openControl(page);
     await chooseFile(page, fileWith([song('x', 'Amazing Grace', 'Different words')], { kind: 'shared' }));

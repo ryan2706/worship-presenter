@@ -3,7 +3,8 @@
 // Control -> Display
 //   { type: 'state', text, caption, black }
 //                                    the full picture for the TV, sent every time.
-//                                    `caption` is the Bible reference ('' for songs).
+//                                    `caption` is the Bible reference, the copyright line
+//                                    for a copyrighted song, or ''.
 //   { type: 'ping' }                 "is a Display open?" (sent when Control loads)
 // Display -> Control
 //   { type: 'hello' }                "I'm open" (on load, and in reply to ping)

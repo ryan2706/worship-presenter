@@ -245,6 +245,8 @@ function cleanSong(raw) {
   if (typeof raw.author === 'string' && raw.author.trim()) song.author = raw.author.trim();
   if (Number.isInteger(raw.year)) song.year = raw.year;
   if (typeof raw.source === 'string' && raw.source.trim()) song.source = raw.source.trim();
+  if (typeof raw.key === 'string' && raw.key.trim() && raw.key.trim().length <= 8) song.key = raw.key.trim();
+  if (raw.copyrighted === true) song.copyrighted = true;
   song.sections = sections;
   if (Array.isArray(raw.order)) {
     const names = new Set(sections.map((section) => section.name));

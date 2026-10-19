@@ -277,10 +277,19 @@ async function loadSongs() {
   songSlides.clear();
   searchText.clear();
   songs.forEach((song) => {
-    songSlides.set(song.id, slidesFor(song));
+    songSlides.set(song.id, songSlidesFor(song));
     searchText.set(song.id, forSearch([song.title, ...song.sections.map((s) => s.text)].join(' ')));
   });
   el.bringBack.hidden = (await countDeletedSamples()) === 0;
+}
+
+// A copyrighted song (imported from chord charts) says so small at the bottom
+// of the TV, where a Bible passage shows its reference.
+function songSlidesFor(song) {
+  const slides = slidesFor(song);
+  if (!song.copyrighted) return slides;
+  const caption = `${song.title} is the copyrighted property of its owner(s).`;
+  return slides.map((slide) => ({ ...slide, caption }));
 }
 
 // After a song is saved, restored or deleted. If the song on the TV changed,
@@ -541,7 +550,8 @@ function buildTiles() {
     const text = item.querySelector('.tile-text');
     text.textContent = slide.text;
     item.querySelector('.tile-label').textContent = slide.name;
-    // Bible slides show their reference small at the bottom, as on the TV.
+    // Bible slides show their reference (and copyrighted songs their notice)
+    // small at the bottom, as on the TV.
     if (slide.caption) {
       const ref = document.createElement('span');
       ref.className = 'tile-ref';
