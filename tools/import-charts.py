@@ -20,6 +20,8 @@ dropped so it can be checked.
 
 The file is a Worship Presenter "shared" file (see js/backup-file.js). Each song is
     {id: 'chart-<file name>', title, source, key, copyrighted: true, sections}
+A bilingual chart makes three songs: both languages (that id and title), English
+only ('-en', "<Title> · English") and Chinese only ('-zh', "<Chinese title> · <Title>").
 The ids stay the same from run to run, so restoring a newer file finds the
 songs already there instead of adding them twice.
 """
@@ -39,6 +41,7 @@ DEFAULT_INDEX = ROOT.parent / 'GEAR' / 'data' / 'songs.json'
 SOURCE = 'Imported from chord charts'
 LONG_SLIDE = 6           # the editor notes slides over this many lines
 PAIRS_PER_SLIDE = 2      # bilingual: English + Chinese line, twice
+LINES_PER_SLIDE = 4      # a bilingual song in one language
 
 # A chord: root, quality, extensions, (b5) style alterations, slash bass.
 CHORD = (
@@ -228,8 +231,8 @@ def english_slides(name, lines, song):
     return slides
 
 
-def bilingual_slides(name, lines, song):
-    """Pairs each English line with its Chinese line, two pairs to a slide."""
+def bilingual_pairs(name, lines, song):
+    """Pairs each English line with its Chinese line: [{'en': …, 'zh': …}]."""
     pairs = []
     pair = None
     for line in lines:
@@ -265,11 +268,25 @@ def bilingual_slides(name, lines, song):
     for item in pairs:
         if len(item) == 1:
             song.unpaired.append((next(iter(item.values())), name or 'no label'))
-    lines_of = [[p[k] for k in ('en', 'zh') if k in p] for p in pairs]
-    return [
-        [line for item in lines_of[i:i + PAIRS_PER_SLIDE] for line in item]
-        for i in range(0, len(lines_of), PAIRS_PER_SLIDE)
-    ]
+    return pairs
+
+
+def chunks(items, size):
+    return [items[i:i + size] for i in range(0, len(items), size)]
+
+
+def bilingual_versions(pairs):
+    """Slides for each version of a bilingual section:
+       both  English line then Chinese line, two pairs to a slide
+       en    English only, four lines to a slide
+       zh    Chinese only, four lines to a slide
+    A line with no partner is used in both one-language versions, since that's
+    how it's sung."""
+    return {
+        'both': [[p[k] for p in group for k in ('en', 'zh') if k in p] for group in chunks(pairs, PAIRS_PER_SLIDE)],
+        'en': chunks([p.get('en', p.get('zh')) for p in pairs], LINES_PER_SLIDE),
+        'zh': chunks([p.get('zh', p.get('en')) for p in pairs], LINES_PER_SLIDE),
+    }
 
 
 def convert(path, rel, index):
@@ -278,20 +295,27 @@ def convert(path, rel, index):
     bilingual = attrs.get('format') == 'bilingual' and re.search(r'^\s*zh:', body, flags=re.M)
     entry = index.get(f'charts/{rel}')
     song.title = (entry or {}).get('title') or title_from_filename(path.stem)
+    song.title_zh = (entry or {}).get('titleZh', '').strip()
     song.key = attrs.get('key', '').strip()
 
-    slides = []
+    versions = {'both': [], 'en': [], 'zh': []} if bilingual else {'both': []}
     sections = sections_of(body, song)
     song.unlabelled = not any(name for name, _ in sections)
     for name, lines in sections:
-        made = (bilingual_slides if bilingual else english_slides)(name, lines, song)
-        if not made:
+        if bilingual:
+            made = bilingual_versions(bilingual_pairs(name, lines, song))
+        else:
+            made = {'both': english_slides(name, lines, song)}
+        if not made['both']:
             if name:
                 song.dropped_sections.append(name)
             continue
-        for block in made:
-            slides.append({'name': name or f'Slide {len(slides) + 1}', 'text': '\n'.join(block)})
-    song.slides = slides
+        for version, blocks in made.items():
+            slides = versions[version]
+            for block in blocks:
+                slides.append({'name': name or f'Slide {len(slides) + 1}', 'text': '\n'.join(block)})
+    song.versions = versions
+    song.slides = versions['both']
     song.bilingual = bool(bilingual)
     return song
 
@@ -345,20 +369,33 @@ class Words:
         return re.sub(r'\s*[-–—]{2,}\s*', ' ', line).strip()
 
 
-def record(song):
-    data = {'id': f'chart-{song.path.stem}', 'title': song.title, 'source': SOURCE}
-    if song.key:
-        data['key'] = song.key
-    data['copyrighted'] = True
-    data['sections'] = song.slides
-    return data
+def records(song):
+    """The songs made from one chart. A bilingual chart makes three:
+    both languages (the plain title and id), English only, and Chinese only."""
+    zh_title = f'{song.title_zh} · {song.title}' if song.title_zh else f'{song.title} · 中文'
+    made = [
+        ('', song.title, 'both'),
+        ('-en', f'{song.title} · English', 'en'),
+        ('-zh', zh_title, 'zh'),
+    ]
+    out = []
+    for suffix, title, version in made:
+        if version not in song.versions:
+            continue
+        data = {'id': f'chart-{song.path.stem}{suffix}', 'title': title, 'source': SOURCE}
+        if song.key:
+            data['key'] = song.key
+        data['copyrighted'] = True
+        data['sections'] = song.versions[version]
+        out.append(data)
+    return out
 
 
-def editor_text(song):
+def editor_text(slides):
     """The words as the song editor shows them (formatLyrics in js/lyrics.js)."""
     return '\n\n'.join(
         slide['text'] if slide['name'] == f'Slide {i + 1}' else f"[{slide['name']}]\n{slide['text']}"
-        for i, slide in enumerate(song.slides)
+        for i, slide in enumerate(slides)
     )
 
 
@@ -415,8 +452,11 @@ def main():
 
     words = Words(songs)
     for song in songs:
-        for slide in song.slides:
-            slide['text'] = '\n'.join(words.tidy(line, song) for line in slide['text'].split('\n'))
+        for version, slides in song.versions.items():
+            for slide in slides:
+                # Joined words are listed once, from the version with both languages.
+                log = song if version == 'both' else Song(song.path, song.rel)
+                slide['text'] = '\n'.join(words.tidy(line, log) for line in slide['text'].split('\n'))
 
     ids = Counter(f'chart-{song.path.stem}' for song in songs)
     for song in songs:
@@ -428,7 +468,7 @@ def main():
         'kind': 'shared',
         'version': 1,
         'savedAt': datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
-        'songs': [record(song) for song in songs],
+        'songs': [data for song in songs for data in records(song)],
         'services': [],
     }
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -436,8 +476,10 @@ def main():
 
     # The report.
     heading('Songs')
-    print(f'{len(songs)} songs converted ({sum(s.bilingual for s in songs)} bilingual), '
-          f'{sum(len(s.slides) for s in songs)} slides, saved to {out}')
+    bilingual = sum(s.bilingual for s in songs)
+    print(f'{len(songs)} charts converted ({bilingual} bilingual) into {len(file["songs"])} songs, '
+          f'saved to {out}')
+    print(f'Each bilingual chart makes 3 songs: both languages, English only, and Chinese only.')
     print(f'Titles: {sum(1 for s in songs if f"charts/{s.rel}" in index)} from the index, '
           f'{sum(1 for s in songs if f"charts/{s.rel}" not in index)} from file names.')
     print(f'Pinyin lines left out: {sum(s.pinyin for s in songs)}')
@@ -473,7 +515,7 @@ def main():
 
     unpaired = [(s, text, where) for s in songs for text, where in s.unpaired]
     if unpaired:
-        heading(f'Bilingual lines without a partner ({len(unpaired)})')
+        heading(f'Bilingual lines without a partner ({len(unpaired)}) - used as they are in the English-only and Chinese-only songs')
         for song, text, where in unpaired:
             print(f'  {song.rel}: {text!r} in {where}')
 
@@ -509,8 +551,9 @@ def main():
         picks = [by_stem[stem] for stem in wanted if stem in by_stem]
         picks += [s for s in songs if s not in picks]
         for song in picks[:args.show]:
-            heading(f'{song.title}  (key {song.key or "?"}{", bilingual" if song.bilingual else ""}) - {song.rel}')
-            print(editor_text(song))
+            for data in records(song):
+                heading(f'{data["title"]}  (key {song.key or "?"}) - {song.rel}')
+                print(editor_text(data['sections']))
 
 
 if __name__ == '__main__':
