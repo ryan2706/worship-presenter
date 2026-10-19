@@ -49,7 +49,7 @@ Volunteers who are not technical.
 - `.nojekyll`: tells GitHub Pages to serve the files as they are.
 - `data/kjv.json`, `data/web.json`: the Bible text. See `data/README.md` for sources and licences.
 - `tools/make-bible-data.py`: remakes the Bible files from eBible.org. Run by hand; it is not a build step.
-- `tools/import-charts.py`: turns the chord charts in `charts/` into a file of songs for Restore. Run by hand. See Chord chart import.
+- `tools/import-charts.py`: turns GEAR's chord charts into a file of songs for Restore. Run by hand. See Chord chart import.
 
 It is live at https://ryan2706.github.io/worship-presenter/, published by GitHub Pages from the root of the `main` branch. Every address in the site is relative (no leading `/`), so it works in that subfolder. Pushing to `main` updates the live site.
 
@@ -117,14 +117,39 @@ Everything stays on this device unless the volunteer presses a button that saves
 
 ### Chord chart import
 
-- `charts/` holds chord charts from the GEAR project (`charts/<Letter>/<slug>.html`, each a `<pre class="chord-chart" data-key>`). Most are copyrighted, so `charts/` is in `.gitignore`: the charts and the converted file never go on GitHub or the live site.
-- `python3 tools/import-charts.py` (standard library only) writes `charts/imported-songs.json`, a `shared` file, and prints a report. The volunteer loads it on each device with **Restore from backup**.
+- The charts live in the GEAR project next to this one: `../GEAR/charts/<Letter>/<slug>.html`, with titles in `../GEAR/data/songs.json`. GEAR is their only home; this repo keeps no copy. (A `charts/` folder here is still read first if one exists, and is gitignored.)
+- `python3 tools/import-charts.py` (standard library only) writes `imported/imported-songs.json`, a `shared` file, and prints a report. Most songs are copyrighted, so `imported/` is in `.gitignore`: the file never goes on GitHub or the live site. The volunteer loads it on each device with **Restore from backup**.
+- Other folders: `python3 tools/import-charts.py <charts folder> --index <songs.json> --out <file>`. Without an index, titles come from file names.
 - Titles come from GEAR's `data/songs.json` index (`../GEAR/data/songs.json`), or else from the file name. Ids are `chart-<slug>`, so running it again and restoring finds the songs already there.
 - Only words are kept. Chord lines, inline chords (`[F]`), pinyin (`py:`), `#` comments, `{…}` markers and musician notes in parentheses (`(x2)`, `(To Ending)`…) are left out; parentheses with sung words ("(Praise Him)") stay. Sections with no words (Intro, Interlude…) are dropped. Labels are tidied (`VERSE 2` → `Verse 2`).
 - Blank lines inside a section split it into slides with the same label.
 - A bilingual chart makes three songs: **both languages** (each English line with its Chinese line, two pairs to a slide; id `chart-<slug>`, plain title), **English only** (`chart-<slug>-en`, "Holy Forever · English") and **Chinese only** (`chart-<slug>-zh`, "圣洁到永远 · Holy Forever", or "<Title> · 中文" when the index has no Chinese title). The one-language songs have four lines to a slide. A line with no partner in the other language is used as it is.
 - Dashes in the words are decided from all the charts' words: "Je ---- sus" is joined when "Jesus" is sung more often than "Je sus"; otherwise a run of dashes becomes a space ("Holy ---- Spirit").
 - Each song gets `source: 'Imported from chord charts'`, `key` and `copyrighted: true`.
+
+#### Adding new songs later
+
+1. In GEAR, add the chart as `charts/<Letter>/<slug>.html`: first letter of the English title (of the pinyin for a Chinese-only song), lowercase ASCII slug with hyphens, never Chinese characters or capitals in the name.
+2. Add an entry to GEAR's `data/songs.json`: `{"title": "Build My Life", "url": "charts/B/build-my-life.html"}`, plus `"titleZh"` for a bilingual song. Without it the title is made from the file name.
+3. Run `python3 tools/import-charts.py`, read the report (dropped notes, unknown labels, lines without a partner, leftover dashes) and fix the chart if something looks wrong.
+4. Restore `imported/imported-songs.json` on each device. Songs already there are matched by id and left alone, so only the new ones are added. A song whose chart changed is offered as **Keep mine** / **Use the shared one**.
+
+A chart is one `<pre class="chord-chart" data-key="G">` (comments before it and stray `</pre>` are fine):
+
+```
+[Verse 1]
+G               C
+Worthy of every song we could ever sing
+
+[Chorus]
+Holy there is no one like you (x2)
+```
+
+- `[Label]` on its own line starts a section: Verse, Chorus, Pre-Chorus, Bridge, Tag, Intro, Interlude, Instrumental, Ending, Outro, Coda, Turnaround, with an optional number. Any capitals or spacing work.
+- Chord lines go above the words; inline chords like `[F]` also work. Both are removed.
+- A blank line inside a section starts a new slide. Sections with only chords are left out.
+- Notes for the band go in brackets with words like x2, repeat, echo, ending, last time, transpose, same chords, or in `{note: …}`. Sung echoes in brackets ("(Praise Him)") are kept.
+- Bilingual: `data-format="bilingual" data-langs="en,zh-Hans"` on the `<pre>`, then `en:` and `zh:` lines one after the other, chords inline; `py:` pinyin lines are ignored. This makes three songs (see above).
 
 ### Bible
 
@@ -225,3 +250,4 @@ Add one line per decision, newest at the bottom, with the date.
 - 2026-10-17: Published on GitHub Pages at /worship-presenter/ from the `main` branch root. All addresses are relative, checked by a test that serves the app from a subfolder. Added an About page and a 404 page.
 - 2026-10-19: Chord charts are imported with `tools/import-charts.py` into a shared-songs file loaded by Restore, not shipped, because most are copyrighted. `charts/` is gitignored. Songs gain optional `key` and `copyrighted`; a copyrighted song shows "<Title> is the copyrighted property of its owner(s)." as the TV caption.
 - 2026-10-19: Each bilingual chart is imported as three songs: both languages, English only and Chinese only, so the group can pick the language for the night.
+- 2026-10-19: The importer reads the charts straight from `../GEAR/charts` and writes `imported/imported-songs.json` (gitignored), so this repo keeps no copy of the charts.

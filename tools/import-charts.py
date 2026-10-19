@@ -4,11 +4,13 @@
 Run by hand (it isn't a build step):
 
     python3 tools/import-charts.py [charts] [--index ../GEAR/data/songs.json]
-                                   [--out charts/imported-songs.json] [--show 5]
+                                   [--out imported/imported-songs.json] [--show 5]
 
-Then open the app, press Restore from backup, and pick the file it made. Most
-of these songs are under copyright, so the charts and the file stay on this
-device: both are in .gitignore and never go on GitHub or the live site.
+The charts come from the GEAR project next to this one (../GEAR/charts), or
+from a charts/ folder here if there is one. Then open the app, press Restore
+from backup, and pick the file it made. Most of these songs are under
+copyright, so the file stays on this device: imported/ and charts/ are in
+.gitignore and never go on GitHub or the live site.
 
 Each chart is a <pre class="chord-chart" data-key="G"> holding either
   - chord lines above lyric lines, with [Verse 1] style labels, or
@@ -37,7 +39,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_INDEX = ROOT.parent / 'GEAR' / 'data' / 'songs.json'
+GEAR = ROOT.parent / 'GEAR'
+DEFAULT_INDEX = GEAR / 'data' / 'songs.json'
+DEFAULT_CHARTS = ROOT / 'charts' if (ROOT / 'charts').is_dir() else GEAR / 'charts'
+DEFAULT_OUT = ROOT / 'imported' / 'imported-songs.json'
 SOURCE = 'Imported from chord charts'
 LONG_SLIDE = 6           # the editor notes slides over this many lines
 PAIRS_PER_SLIDE = 2      # bilingual: English + Chinese line, twice
@@ -430,14 +435,16 @@ def heading(text):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
-    parser.add_argument('charts', nargs='?', default=str(ROOT / 'charts'))
+    parser.add_argument('charts', nargs='?', default=str(DEFAULT_CHARTS))
     parser.add_argument('--index', default=str(DEFAULT_INDEX) if DEFAULT_INDEX.exists() else '')
-    parser.add_argument('--out', default=None, help='default: <charts>/imported-songs.json')
+    parser.add_argument('--out', default=str(DEFAULT_OUT))
     parser.add_argument('--show', type=int, default=5, help='songs to print as the editor shows them')
     args = parser.parse_args()
 
     charts = Path(args.charts).resolve()
-    out = Path(args.out) if args.out else charts / 'imported-songs.json'
+    if not charts.is_dir():
+        sys.exit(f'No charts folder at {charts}. Give the folder, e.g. python3 tools/import-charts.py ../GEAR/charts')
+    out = Path(args.out)
     index = load_index(args.index)
 
     songs, unreadable, empty = [], [], []
